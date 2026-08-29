@@ -82,6 +82,7 @@
         <strong id="cart-total">Total: $0.00</strong>
         <button id="clear-cart" type="button">Clear cart</button>
       </div>
+      <output id="cart-status" class="meta"></output>
     </section>
 
     <section id="checkout" class="panel stack">
@@ -105,7 +106,7 @@
 
     <section id="admin" class="panel stack">
       <h2>Admin dashboard</h2>
-      <p class="meta">Multi-user inventory and order management with action logging.</p>
+      <p class="meta">Multi-user inventory and order management with action logging. Demo-only sign-in for static hosting.</p>
 
       <form id="admin-login" class="row">
         <label>Admin user
@@ -125,7 +126,7 @@
       <section id="tab-inventory" class="tab-pane active">
         <form id="inventory-form" class="row">
           <input name="name" placeholder="Item name" required>
-          <input name="price" type="number" min="1" step="1" placeholder="Price" required>
+          <input name="price" type="number" min="0.01" step="0.01" placeholder="Price" required>
           <input name="stock" type="number" min="0" step="1" placeholder="Stock" required>
           <button type="submit" class="cta">Add item</button>
         </form>
@@ -161,27 +162,40 @@
 
   <script>
     const KEY = "butterloom-store-v1";
-    const defaults = {
+    const createDefaults = () => ({
       users: [
-        { id: crypto.randomUUID(), name: "Ayesha", role: "manager" },
-        { id: crypto.randomUUID(), name: "Rohan", role: "fulfillment" },
-        { id: crypto.randomUUID(), name: "Leena", role: "viewer" }
+        { id: "u-ayesha", name: "Ayesha", role: "manager" },
+        { id: "u-rohan", name: "Rohan", role: "fulfillment" },
+        { id: "u-leena", name: "Leena", role: "viewer" }
       ],
       products: [
-        { id: crypto.randomUUID(), name: "Paisley Kurta Set", price: 89, stock: 12, tag: "Best seller" },
-        { id: crypto.randomUUID(), name: "Handloom Saree", price: 120, stock: 8, tag: "Limited" },
-        { id: crypto.randomUUID(), name: "Festive Nehru Jacket", price: 76, stock: 10, tag: "New drop" },
-        { id: crypto.randomUUID(), name: "Paisley Silk Dupatta", price: 42, stock: 15, tag: "Signature" }
+        { id: "p-kurta", name: "Paisley Kurta Set", price: 89, stock: 12, tag: "Best seller" },
+        { id: "p-saree", name: "Handloom Saree", price: 120, stock: 8, tag: "Limited" },
+        { id: "p-jacket", name: "Festive Nehru Jacket", price: 76, stock: 10, tag: "New drop" },
+        { id: "p-dupatta", name: "Paisley Silk Dupatta", price: 42, stock: 15, tag: "Signature" }
       ],
       cart: [],
       orders: [],
       logs: []
-    };
+    });
 
     const load = () => {
+      const defaults = createDefaults();
       try {
         const existing = JSON.parse(localStorage.getItem(KEY));
-        if (existing && Array.isArray(existing.products)) return existing;
+        if (existing && typeof existing === "object") {
+          const merged = {
+            ...defaults,
+            ...existing,
+            users: Array.isArray(existing.users) ? existing.users : defaults.users,
+            products: Array.isArray(existing.products) ? existing.products : defaults.products,
+            cart: Array.isArray(existing.cart) ? existing.cart : defaults.cart,
+            orders: Array.isArray(existing.orders) ? existing.orders : defaults.orders,
+            logs: Array.isArray(existing.logs) ? existing.logs : defaults.logs
+          };
+          localStorage.setItem(KEY, JSON.stringify(merged));
+          return merged;
+        }
       } catch {}
       localStorage.setItem(KEY, JSON.stringify(defaults));
       return structuredClone(defaults);
@@ -193,8 +207,24 @@
     const save = () => localStorage.setItem(KEY, JSON.stringify(state));
     const byId = (list, id) => list.find(item => item.id === id);
     const money = n => `$${Number(n).toFixed(2)}`;
+    const allowedRoles = ["manager", "fulfillment", "viewer"];
+    const currentAdmin = () => byId(state.users, sessionUserId);
+    const hasRole = (...roles) => {
+      const user = currentAdmin();
+      return !!user && roles.includes(user.role);
+    };
     const setCheckoutStatus = (message, tone = "meta") => {
       const status = document.getElementById("checkout-status");
+      status.textContent = message;
+      status.className = tone;
+    };
+    const setCartStatus = (message, tone = "meta") => {
+      const status = document.getElementById("cart-status");
+      status.textContent = message;
+      status.className = tone;
+    };
+    const setAdminStatus = (message, tone = "meta") => {
+      const status = document.getElementById("admin-session");
       status.textContent = message;
       status.className = tone;
     };
@@ -237,8 +267,13 @@
         button.textContent = product.stock < 1 ? "Out of stock" : "Add to cart";
         button.addEventListener("click", () => {
           const existing = state.cart.find(item => item.productId === product.id);
+          if (existing && existing.qty >= product.stock) {
+            setCartStatus(`Only ${product.stock} of ${product.name} available.`, "danger");
+            return;
+          }
           if (existing) existing.qty += 1;
           else state.cart.push({ productId: product.id, qty: 1 });
+          setCartStatus("");
           save();
           renderCart();
           renderCheckoutReview();
@@ -270,7 +305,17 @@
         const plus = document.createElement("button");
         plus.type = "button";
         plus.textContent = "+";
-        plus.addEventListener("click", () => { line.qty += 1; save(); renderCart(); renderCheckoutReview(); });
+        plus.addEventListener("click", () => {
+          if (line.qty >= product.stock) {
+            setCartStatus(`Only ${product.stock} of ${product.name} available.`, "danger");
+            return;
+          }
+          line.qty += 1;
+          setCartStatus("");
+          save();
+          renderCart();
+          renderCheckoutReview();
+        });
         const minus = document.createElement("button");
         minus.type = "button";
         minus.textContent = "−";
@@ -325,6 +370,10 @@
         restock.type = "button";
         restock.textContent = "+1 stock";
         restock.addEventListener("click", () => {
+          if (!hasRole("manager")) {
+            setAdminStatus("Manager access is required to restock items.", "danger");
+            return;
+          }
           product.stock += 1;
           save();
           logAction("inventory_restock", `${product.name} increased to ${product.stock}`);
@@ -362,6 +411,11 @@
           select.append(opt);
         });
         select.addEventListener("change", () => {
+          if (!hasRole("manager", "fulfillment")) {
+            setAdminStatus("Manager or fulfillment access is required to update order status.", "danger");
+            select.value = order.status;
+            return;
+          }
           order.status = select.value;
           save();
           logAction("order_status_update", `${order.id.slice(0, 8)} set to ${order.status}`);
@@ -389,6 +443,7 @@
 
     document.getElementById("clear-cart").addEventListener("click", () => {
       state.cart = [];
+      setCartStatus("");
       save();
       renderCart();
       renderCheckoutReview();
@@ -408,7 +463,12 @@
           return;
         }
       }
-      for (const line of state.cart) byId(state.products, line.productId).stock -= line.qty;
+      const orderLines = state.cart.map(line => ({ ...line }));
+      const orderTotal = cartTotal();
+      for (const line of state.cart) {
+        const product = byId(state.products, line.productId);
+        if (product) product.stock -= line.qty;
+      }
       const order = {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
@@ -419,8 +479,8 @@
           address: String(form.get("address") || "").trim()
         },
         paymentMethod: String(form.get("paymentMethod") || "Card"),
-        lines: state.cart.map(line => ({ ...line })),
-        total: cartTotal()
+        lines: orderLines,
+        total: orderTotal
       };
       state.orders.unshift(order);
       state.cart = [];
@@ -439,7 +499,11 @@
       event.preventDefault();
       sessionUserId = document.getElementById("admin-user").value;
       const user = byId(state.users, sessionUserId);
-      document.getElementById("admin-session").textContent = user ? `Signed in as ${user.name} (${user.role})` : "Not signed in";
+      if (!user) {
+        setAdminStatus("No admin user available to sign in.", "danger");
+        return;
+      }
+      setAdminStatus(`Signed in as ${user.name} (${user.role})`);
       if (user) {
         logAction("admin_sign_in", `${user.name} signed in`);
       }
@@ -447,7 +511,10 @@
 
     document.getElementById("inventory-form").addEventListener("submit", (event) => {
       event.preventDefault();
-      if (!sessionUserId) return;
+      if (!hasRole("manager")) {
+        setAdminStatus("Manager access is required to change inventory.", "danger");
+        return;
+      }
       const form = new FormData(event.target);
       const item = {
         id: crypto.randomUUID(),
@@ -456,9 +523,13 @@
         stock: Number(form.get("stock")),
         tag: "Admin added"
       };
-      if (!item.name || item.price < 1 || item.stock < 0) return;
+      if (!item.name || !Number.isFinite(item.price) || item.price < 0.01 || !Number.isFinite(item.stock) || !Number.isInteger(item.stock) || item.stock < 0) {
+        setAdminStatus("Enter a valid name, decimal price, and whole-number stock.", "danger");
+        return;
+      }
       state.products.push(item);
       save();
+      setAdminStatus("Inventory item added.");
       logAction("inventory_add", `${item.name} added with stock ${item.stock}`);
       event.target.reset();
       renderInventory();
@@ -467,16 +538,23 @@
 
     document.getElementById("user-form").addEventListener("submit", (event) => {
       event.preventDefault();
-      if (!sessionUserId) return;
+      if (!hasRole("manager")) {
+        setAdminStatus("Manager access is required to add users.", "danger");
+        return;
+      }
       const form = new FormData(event.target);
       const user = {
         id: crypto.randomUUID(),
         name: String(form.get("name") || "").trim(),
-        role: String(form.get("role") || "viewer")
+        role: String(form.get("role"))
       };
-      if (!user.name) return;
+      if (!user.name || !allowedRoles.includes(user.role)) {
+        setAdminStatus("Enter a valid user name and role.", "danger");
+        return;
+      }
       state.users.push(user);
       save();
+      setAdminStatus("Admin user added.");
       logAction("admin_user_add", `${user.name} added as ${user.role}`);
       event.target.reset();
       renderUsers();
