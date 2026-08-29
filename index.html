@@ -1,21 +1,501 @@
 <!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>butterloom</title>
-<style>
-  :root { color-scheme: light dark }
-  body { margin:0; min-height:100vh; display:grid; place-items:center;
-         font:600 clamp(2rem,12vw,5rem)/1.2 system-ui, sans-serif; text-align:center }
-  small { display:block; font:400 1rem/1.6 ui-monospace, monospace; opacity:.6; margin-top:1.5rem }
-</style>
-<div>
-  hello world 👋
-  <small id="v">butterloom</small>
-</div>
-<script>
-  // ponytail: proves which deploy you're looking at, no build step needed
-  fetch('https://api.github.com/repos/MooseHK/butterloom/commits/main')
-    .then(r => r.json())
-    .then(c => v.textContent = c.sha.slice(0,7) + ' · ' + c.commit.message.slice(0,40))
-    .catch(() => {});
-</script>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Butterloom</title>
+  <style>
+    :root {
+      --bg: #f8f4ef;
+      --card: #fff;
+      --ink: #1e1b18;
+      --muted: #6a6158;
+      --accent: #7f3d2f;
+      --accent-soft: #ecd9cf;
+      --ok: #1f7a3d;
+      --danger: #992f2f;
+      --border: #e4d8cc;
+    }
+    * { box-sizing: border-box }
+    body { margin: 0; font: 15px/1.45 "Inter", "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg) }
+    .wrap { width: min(1140px, 92vw); margin: 0 auto }
+    header { background: linear-gradient(120deg, #fff6f0, #f7f8f3); border-bottom: 1px solid var(--border) }
+    nav { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 0 }
+    .brand { font-size: 1.3rem; letter-spacing: .08em; font-weight: 700; text-transform: uppercase }
+    .nav-links { display: flex; gap: 10px; flex-wrap: wrap }
+    .nav-links a, button, .button-like { border: 1px solid var(--border); background: var(--card); color: var(--ink); padding: 8px 12px; border-radius: 999px; cursor: pointer; text-decoration: none; font: inherit }
+    .hero { padding: 44px 0 30px; display: grid; gap: 10px }
+    .hero h1 { margin: 0; font-size: clamp(1.8rem, 4vw, 3rem) }
+    .hero p { margin: 0; color: var(--muted); max-width: 70ch }
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px }
+    main { padding: 20px 0 42px; display: grid; gap: 20px }
+    .catalog { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) }
+    .product { display: grid; gap: 8px; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #fff }
+    .product h3 { margin: 0; font-size: 1rem }
+    .meta { color: var(--muted); font-size: .92rem }
+    .price { font-weight: 700 }
+    .pill { display: inline-flex; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 2px 8px; font-size: .8rem; width: fit-content }
+    #cart-items, #order-items, #log-items, #user-items, #checkout-review { display: grid; gap: 8px }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; border: 1px solid var(--border); border-radius: 10px; padding: 10px }
+    .stack { display: grid; gap: 8px }
+    label { display: grid; gap: 4px; font-size: .9rem }
+    input, select, textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px; font: inherit; background: #fff }
+    .cta { background: var(--accent); color: #fff; border-color: var(--accent) }
+    .ok { color: var(--ok) }
+    .danger { color: var(--danger) }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px }
+    .tab-pane { display: none; gap: 10px }
+    .tab-pane.active { display: grid }
+    footer { border-top: 1px solid var(--border); color: var(--muted); padding: 20px 0; font-size: .9rem }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <nav>
+        <strong class="brand">Butterloom</strong>
+        <div class="nav-links">
+          <a href="#shop">Shop</a>
+          <a href="#checkout">Checkout</a>
+          <a href="#admin">Admin</a>
+        </div>
+      </nav>
+      <section class="hero">
+        <h1>South Asian craft, modern cart experience.</h1>
+        <p>
+          A fast, static GitHub Pages-ready storefront inspired by polished fashion layouts, with an Amazon-style cart and checkout flow plus an admin workspace for inventory, orders, users, and activity logs.
+        </p>
+      </section>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="shop" class="panel stack">
+      <h2>Featured collection</h2>
+      <div id="catalog" class="catalog"></div>
+    </section>
+
+    <section class="panel stack">
+      <h2>Cart</h2>
+      <div id="cart-items"></div>
+      <div class="row">
+        <strong id="cart-total">Total: $0.00</strong>
+        <button id="clear-cart" type="button">Clear cart</button>
+      </div>
+    </section>
+
+    <section id="checkout" class="panel stack">
+      <h2>Checkout</h2>
+      <div id="checkout-review" class="meta">Add items to cart to begin checkout.</div>
+      <form id="checkout-form" class="stack">
+        <label>Full name<input required name="name" autocomplete="name"></label>
+        <label>Email<input required name="email" type="email" autocomplete="email"></label>
+        <label>Address<textarea required name="address" rows="2" autocomplete="street-address"></textarea></label>
+        <label>Payment method
+          <select name="paymentMethod" required>
+            <option value="Card">Card</option>
+            <option value="UPI">UPI</option>
+            <option value="Cash on Delivery">Cash on Delivery</option>
+          </select>
+        </label>
+        <button class="cta" type="submit">Place order</button>
+        <output id="checkout-status" class="meta"></output>
+      </form>
+    </section>
+
+    <section id="admin" class="panel stack">
+      <h2>Admin dashboard</h2>
+      <p class="meta">Multi-user inventory and order management with action logging.</p>
+
+      <form id="admin-login" class="row">
+        <label>Admin user
+          <select id="admin-user"></select>
+        </label>
+        <button class="cta" type="submit">Sign in</button>
+        <span id="admin-session" class="meta">Not signed in</span>
+      </form>
+
+      <div class="tabs">
+        <button data-tab="inventory" type="button">Inventory</button>
+        <button data-tab="orders" type="button">Orders</button>
+        <button data-tab="users" type="button">Users</button>
+        <button data-tab="logs" type="button">Activity logs</button>
+      </div>
+
+      <section id="tab-inventory" class="tab-pane active">
+        <form id="inventory-form" class="row">
+          <input name="name" placeholder="Item name" required>
+          <input name="price" type="number" min="1" step="1" placeholder="Price" required>
+          <input name="stock" type="number" min="0" step="1" placeholder="Stock" required>
+          <button type="submit" class="cta">Add item</button>
+        </form>
+        <div id="inventory-items"></div>
+      </section>
+
+      <section id="tab-orders" class="tab-pane">
+        <div id="order-items"></div>
+      </section>
+
+      <section id="tab-users" class="tab-pane">
+        <form id="user-form" class="row">
+          <input name="name" placeholder="Display name" required>
+          <select name="role" required>
+            <option value="manager">manager</option>
+            <option value="fulfillment">fulfillment</option>
+            <option value="viewer">viewer</option>
+          </select>
+          <button class="cta" type="submit">Add user</button>
+        </form>
+        <div id="user-items"></div>
+      </section>
+
+      <section id="tab-logs" class="tab-pane">
+        <div id="log-items"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">Butterloom static storefront · deploy-ready for GitHub Pages.</div>
+  </footer>
+
+  <script>
+    const KEY = "butterloom-store-v1";
+    const defaults = {
+      users: [
+        { id: crypto.randomUUID(), name: "Ayesha", role: "manager" },
+        { id: crypto.randomUUID(), name: "Rohan", role: "fulfillment" },
+        { id: crypto.randomUUID(), name: "Leena", role: "viewer" }
+      ],
+      products: [
+        { id: crypto.randomUUID(), name: "Paisley Kurta Set", price: 89, stock: 12, tag: "Best seller" },
+        { id: crypto.randomUUID(), name: "Handloom Saree", price: 120, stock: 8, tag: "Limited" },
+        { id: crypto.randomUUID(), name: "Festive Nehru Jacket", price: 76, stock: 10, tag: "New drop" },
+        { id: crypto.randomUUID(), name: "Paisley Silk Dupatta", price: 42, stock: 15, tag: "Signature" }
+      ],
+      cart: [],
+      orders: [],
+      logs: []
+    };
+
+    const load = () => {
+      try {
+        const existing = JSON.parse(localStorage.getItem(KEY));
+        if (existing && Array.isArray(existing.products)) return existing;
+      } catch {}
+      localStorage.setItem(KEY, JSON.stringify(defaults));
+      return structuredClone(defaults);
+    };
+
+    let state = load();
+    let sessionUserId = "";
+
+    const save = () => localStorage.setItem(KEY, JSON.stringify(state));
+    const byId = (list, id) => list.find(item => item.id === id);
+    const money = n => `$${Number(n).toFixed(2)}`;
+    const setCheckoutStatus = (message, tone = "meta") => {
+      const status = document.getElementById("checkout-status");
+      status.textContent = message;
+      status.className = tone;
+    };
+
+    const logAction = (action, details) => {
+      const user = byId(state.users, sessionUserId);
+      state.logs.unshift({
+        id: crypto.randomUUID(),
+        at: new Date().toISOString(),
+        user: user ? `${user.name} (${user.role})` : "customer",
+        action,
+        details
+      });
+      state.logs = state.logs.slice(0, 100);
+      save();
+      renderLogs();
+    };
+
+    const renderCatalog = () => {
+      const root = document.getElementById("catalog");
+      root.textContent = "";
+      state.products.forEach(product => {
+        const card = document.createElement("article");
+        card.className = "product";
+        const name = document.createElement("h3");
+        name.textContent = product.name;
+        const tag = document.createElement("span");
+        tag.className = "pill";
+        tag.textContent = product.tag;
+        const meta = document.createElement("p");
+        meta.className = "meta";
+        meta.textContent = `${product.stock} in stock`;
+        const price = document.createElement("div");
+        price.className = "price";
+        price.textContent = money(product.price);
+        const button = document.createElement("button");
+        button.className = "cta";
+        button.type = "button";
+        button.disabled = product.stock < 1;
+        button.textContent = product.stock < 1 ? "Out of stock" : "Add to cart";
+        button.addEventListener("click", () => {
+          const existing = state.cart.find(item => item.productId === product.id);
+          if (existing) existing.qty += 1;
+          else state.cart.push({ productId: product.id, qty: 1 });
+          save();
+          renderCart();
+          renderCheckoutReview();
+        });
+        card.append(name, tag, meta, price, button);
+        root.append(card);
+      });
+    };
+
+    const cartLineTotal = (line) => {
+      const product = byId(state.products, line.productId);
+      return product ? product.price * line.qty : 0;
+    };
+
+    const cartTotal = () => state.cart.reduce((sum, line) => sum + cartLineTotal(line), 0);
+
+    const renderCart = () => {
+      const root = document.getElementById("cart-items");
+      root.textContent = "";
+      if (!state.cart.length) root.textContent = "Cart is empty.";
+      state.cart.forEach(line => {
+        const product = byId(state.products, line.productId);
+        if (!product) return;
+        const row = document.createElement("div");
+        row.className = "row";
+        const summary = document.createElement("div");
+        summary.textContent = `${product.name} × ${line.qty} · ${money(cartLineTotal(line))}`;
+        const controls = document.createElement("div");
+        const plus = document.createElement("button");
+        plus.type = "button";
+        plus.textContent = "+";
+        plus.addEventListener("click", () => { line.qty += 1; save(); renderCart(); renderCheckoutReview(); });
+        const minus = document.createElement("button");
+        minus.type = "button";
+        minus.textContent = "−";
+        minus.addEventListener("click", () => {
+          line.qty -= 1;
+          if (line.qty < 1) state.cart = state.cart.filter(item => item !== line);
+          save(); renderCart(); renderCheckoutReview();
+        });
+        controls.append(plus, minus);
+        row.append(summary, controls);
+        root.append(row);
+      });
+      document.getElementById("cart-total").textContent = `Total: ${money(cartTotal())}`;
+    };
+
+    const renderCheckoutReview = () => {
+      const root = document.getElementById("checkout-review");
+      if (!state.cart.length) {
+        root.textContent = "Add items to cart to begin checkout.";
+        return;
+      }
+      root.textContent = `You are checking out ${state.cart.reduce((n, line) => n + line.qty, 0)} items for ${money(cartTotal())}.`;
+    };
+
+    const renderUsers = () => {
+      const userSelect = document.getElementById("admin-user");
+      const userItems = document.getElementById("user-items");
+      userSelect.textContent = "";
+      userItems.textContent = "";
+      state.users.forEach(user => {
+        const opt = document.createElement("option");
+        opt.value = user.id;
+        opt.textContent = `${user.name} (${user.role})`;
+        userSelect.append(opt);
+        const row = document.createElement("div");
+        row.className = "row";
+        row.textContent = `${user.name} · ${user.role}`;
+        userItems.append(row);
+      });
+    };
+
+    const renderInventory = () => {
+      const root = document.getElementById("inventory-items");
+      root.textContent = "";
+      state.products.forEach(product => {
+        const row = document.createElement("div");
+        row.className = "row";
+        const info = document.createElement("span");
+        info.textContent = `${product.name} · ${money(product.price)} · stock ${product.stock}`;
+        const controls = document.createElement("div");
+        const restock = document.createElement("button");
+        restock.type = "button";
+        restock.textContent = "+1 stock";
+        restock.addEventListener("click", () => {
+          product.stock += 1;
+          save();
+          logAction("inventory_restock", `${product.name} increased to ${product.stock}`);
+          renderInventory();
+          renderCatalog();
+        });
+        controls.append(restock);
+        row.append(info, controls);
+        root.append(row);
+      });
+    };
+
+    const renderOrders = () => {
+      const root = document.getElementById("order-items");
+      root.textContent = "";
+      if (!state.orders.length) {
+        root.textContent = "No orders yet.";
+        return;
+      }
+      state.orders.forEach(order => {
+        const row = document.createElement("div");
+        row.className = "row";
+        const left = document.createElement("div");
+        const idStrong = document.createElement("strong");
+        idStrong.textContent = `#${order.id.slice(0, 8)}`;
+        const details = document.createElement("div");
+        details.textContent = `${order.customer.name} · ${money(order.total)} · ${order.status}`;
+        left.append(idStrong, details);
+        const select = document.createElement("select");
+        ["Placed", "Packed", "Shipped", "Delivered"].forEach(status => {
+          const opt = document.createElement("option");
+          opt.value = status;
+          opt.textContent = status;
+          if (status === order.status) opt.selected = true;
+          select.append(opt);
+        });
+        select.addEventListener("change", () => {
+          order.status = select.value;
+          save();
+          logAction("order_status_update", `${order.id.slice(0, 8)} set to ${order.status}`);
+          renderOrders();
+        });
+        row.append(left, select);
+        root.append(row);
+      });
+    };
+
+    const renderLogs = () => {
+      const root = document.getElementById("log-items");
+      root.textContent = "";
+      if (!state.logs.length) {
+        root.textContent = "No activity yet.";
+        return;
+      }
+      state.logs.forEach(entry => {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.textContent = `${new Date(entry.at).toLocaleString()} · ${entry.user} · ${entry.action} · ${entry.details}`;
+        root.append(row);
+      });
+    };
+
+    document.getElementById("clear-cart").addEventListener("click", () => {
+      state.cart = [];
+      save();
+      renderCart();
+      renderCheckoutReview();
+    });
+
+    document.getElementById("checkout-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = new FormData(event.target);
+      if (!state.cart.length) {
+        setCheckoutStatus("Cart is empty.");
+        return;
+      }
+      for (const line of state.cart) {
+        const product = byId(state.products, line.productId);
+        if (!product || product.stock < line.qty) {
+          setCheckoutStatus(`Insufficient inventory for ${product ? product.name : "an item"}.`, "danger");
+          return;
+        }
+      }
+      for (const line of state.cart) byId(state.products, line.productId).stock -= line.qty;
+      const order = {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        status: "Placed",
+        customer: {
+          name: String(form.get("name") || "").trim(),
+          email: String(form.get("email") || "").trim(),
+          address: String(form.get("address") || "").trim()
+        },
+        paymentMethod: String(form.get("paymentMethod") || "Card"),
+        lines: state.cart.map(line => ({ ...line })),
+        total: cartTotal()
+      };
+      state.orders.unshift(order);
+      state.cart = [];
+      save();
+      logAction("order_created", `${order.id.slice(0, 8)} placed with ${order.lines.length} line(s)`);
+      setCheckoutStatus(`Order ${order.id.slice(0, 8)} placed successfully.`, "ok");
+      event.target.reset();
+      renderCatalog();
+      renderCart();
+      renderCheckoutReview();
+      renderOrders();
+      renderInventory();
+    });
+
+    document.getElementById("admin-login").addEventListener("submit", (event) => {
+      event.preventDefault();
+      sessionUserId = document.getElementById("admin-user").value;
+      const user = byId(state.users, sessionUserId);
+      document.getElementById("admin-session").textContent = user ? `Signed in as ${user.name} (${user.role})` : "Not signed in";
+      if (user) {
+        logAction("admin_sign_in", `${user.name} signed in`);
+      }
+    });
+
+    document.getElementById("inventory-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!sessionUserId) return;
+      const form = new FormData(event.target);
+      const item = {
+        id: crypto.randomUUID(),
+        name: String(form.get("name") || "").trim(),
+        price: Number(form.get("price")),
+        stock: Number(form.get("stock")),
+        tag: "Admin added"
+      };
+      if (!item.name || item.price < 1 || item.stock < 0) return;
+      state.products.push(item);
+      save();
+      logAction("inventory_add", `${item.name} added with stock ${item.stock}`);
+      event.target.reset();
+      renderInventory();
+      renderCatalog();
+    });
+
+    document.getElementById("user-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!sessionUserId) return;
+      const form = new FormData(event.target);
+      const user = {
+        id: crypto.randomUUID(),
+        name: String(form.get("name") || "").trim(),
+        role: String(form.get("role") || "viewer")
+      };
+      if (!user.name) return;
+      state.users.push(user);
+      save();
+      logAction("admin_user_add", `${user.name} added as ${user.role}`);
+      event.target.reset();
+      renderUsers();
+    });
+
+    document.querySelectorAll("[data-tab]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-pane").forEach(pane => pane.classList.remove("active"));
+        document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
+      });
+    });
+
+    renderCatalog();
+    renderCart();
+    renderCheckoutReview();
+    renderUsers();
+    renderInventory();
+    renderOrders();
+    renderLogs();
+  </script>
+</body>
+</html>
