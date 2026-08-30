@@ -237,21 +237,23 @@ of a failed delivery, or **72 hours** in force-majeure cases after a 48-hour not
 `due_at` makes the deadline queryable rather than remembered. The seller bears the
 transaction charge, which is why it is recorded separately.
 
-`basis` records *why* a refund was owed — `failed_delivery`, `defective`, `wrong_item`
-(all compelled by regulation) or `change_of_mind` (Butterloom's own policy). The
-distinction matters because return rights differ by payment method: **COD orders carry
-full change-of-mind refunds; bKash and card orders are exchange-only.**
+`basis` records *why* a refund was owed — `failed_delivery`, `defective` or `wrong_item`.
+**Butterloom's policy is exchange only, on every payment method**, so a cash refund is
+always a compelled one; there is no `change_of_mind` basis. A size or colour return
+produces an exchange, which is a new fulfilment against the same order rather than a
+`refunds` row.
 
 Two consequences follow:
 
 - **A refund's terms come from `orders.return_policy_version`, not from the policy in
   force today.** Published terms change; what a customer was promised at purchase is what
-  they are owed. Same reasoning as the money snapshot in §5.
+  they are owed. Same reasoning as the money snapshot in §5. This matters even under a
+  narrow policy, because the exchange window is part of those terms.
 - **"Same channel" has no clean meaning for cash.** A COD customer paid cash to a Courier,
-  so a refund realistically leaves by MFS transfer or bank deposit. `channel` therefore
-  records what was actually used and may legitimately differ from how the order was paid.
-  Worth confirming the acceptable treatment with a local consultant, since the regulatory
-  wording assumes an electronic original.
+  so refunding a defective item realistically means an MFS transfer or bank deposit.
+  `channel` therefore records what was actually used and may legitimately differ from how
+  the order was paid. Worth confirming the acceptable treatment with a local consultant,
+  since the regulatory wording assumes an electronic original.
 
 ### `consignments`
 `order_id`, `courier`, `consignment_ref`, `status`, `delivery_fee_taka`, `cod_fee_taka`,
