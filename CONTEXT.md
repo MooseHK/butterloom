@@ -53,3 +53,19 @@ The Courier's periodic transfer to Butterloom of collected COD cash, net of
 delivery and COD fees. Reconciling Settlements against Orders is a manual task —
 the Courier exposes no API for it.
 _Avoid_: payout, remittance, disbursement
+
+**Product**:
+The merchandising unit a customer browses — a garment as a concept, with its title,
+description and photographs. A Product is never itself purchasable.
+_Avoid_: item, article, SKU
+
+**Variant**:
+The purchasable unit: one Product in one size and colour, carrying its own price, SKU and
+stock. Everything a customer adds to a cart is a Variant.
+_Avoid_: option, SKU, size
+
+**Stock Movement**:
+A single recorded change to a Variant's stock, carrying its reason and the Order or
+operator responsible. Stock is the sum of its Movements; a bare number with no Movement
+behind it is unexplained.
+_Avoid_: adjustment, stock change, inventory update
