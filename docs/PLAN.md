@@ -6,6 +6,9 @@ This plan covers what to build, in what order, and which decisions are still ope
 It assumes the decisions already recorded in `docs/adr/` and the vocabulary in
 `CONTEXT.md`. Where this document and an ADR disagree, the ADR wins.
 
+Companion documents: `docs/DATA-MODEL.md` (the schema) and `docs/COMPLIANCE.md` (the
+regulatory obligations that shape it — several are load-bearing, not paperwork).
+
 ---
 
 ## 1. What Butterloom must do
@@ -26,10 +29,16 @@ Everything below serves one of those. Anything that serves neither is out of sco
 
 ### Explicitly out of scope for v1
 
-Customer accounts and order history logins, wishlists, reviews, discount codes, multi-
-currency, multi-language (see open decisions), marketplace/multi-vendor, loyalty, and
-any analytics beyond basic traffic. Each is easy to add later on the model below; none
-earns its complexity before the first hundred orders.
+Customer accounts and order-history logins, wishlists, discount codes, multi-currency,
+marketplace/multi-vendor, loyalty, and any analytics beyond basic traffic. Each is easy to
+add later on the model below; none earns its complexity before the first hundred orders.
+
+**Corrected after the compliance review:** *reviews* were listed here as out of scope and
+are not — customer-visible reviews are required, and negative reviews may not be deleted.
+So are a complaints workflow with a 72-hour resolution deadline, an invoice record, and a
+delivery SLA timer. See `docs/COMPLIANCE.md`; they are modelled in `docs/DATA-MODEL.md` §6.
+The storefront is **bilingual from the start** (English default, Bengali alongside), which
+is also not optional: the terms and the return policy must exist in Bengali.
 
 ---
 
@@ -443,12 +452,12 @@ non-response can default sensibly rather than block.
 
 | # | Decision | Recommendation |
 |---|---|---|
-| 1 | **Storefront language** — Bangla, English, or both? | English-first with Bangla product names, if your customers are the urban Dhaka segment that shops online in English. This decides the typeface and whether an i18n layer is needed at all — retrofitting one is disproportionately painful, so it is the most urgent question here. |
+| 1 | ~~Storefront language~~ | **Settled: both, English by default.** Content is bilingual throughout; see ADR 0004 for how it is stored. The typeface must carry real Bangla coverage — see §8. |
 | 2 | **Delivery charge model** | Flat inside Dhaka, higher outside, free over a threshold. Confirm the actual figures you intend to charge — they belong in configuration, not code. |
 | 3 | **Hosting and database** | A fixed-IP VPS in Singapore with Postgres, unless you would rather trade cost for not operating a server. Interacts with the unresolved bKash IP question. |
-| 4 | **VAT treatment** | Pending the compliance research now running; the answer determines whether displayed prices are VAT-inclusive. |
-| 5 | **Return and exchange policy** | Needed as customer-facing content and as an order state. Bangladeshi e-commerce regulation may mandate minimums — pending the same research. |
-| 6 | **Anti-refusal measure** | Operator phone confirmation for v1; consider OTP verification, or partial advance for high-value orders, once you can see your actual refusal rate. |
+| 4 | ~~VAT treatment~~ | **Settled: display VAT-inclusive, itemise on the invoice.** Charging above the displayed price is an offence (CRPA s.40). The *rate* remains open and must be configurable — it moved 7.5% → 15% → 10% within January 2025; confirm the current figure with a VAT consultant. |
+| 5 | **Return and exchange policy** | Regulation sets the floor: refunds within **10 days** of failed delivery via the same channel paid, and a 48h-notify / 72h-refund path for force majeure. Your own policy sits on top and **must be published in Bengali**. Still need your commercial terms — change-of-mind window, who pays return shipping. |
+| 6 | **Anti-refusal measure** | Operator phone confirmation for v1, plus a pre-dispatch courier fraud-check gate (`cod_risk_checks`). Note the legal ceiling: advance payment above **10%** is not permitted for goods not shippable within 48h, so partial-advance is available only for in-stock inventory. |
 | 7 | **Guest checkout only, or customer accounts?** | Guest only, with order lookup by phone plus order number. Accounts add auth surface and password-reset flows for little v1 benefit. |
 | 8 | **Product photography** | The single largest quality lever and entirely outside code. Worth resolving in parallel with Phase 0–1 rather than after. |
 | 9 | **Operator roles** | Who are the two people, and does either need restricting later? Affects nothing now if the role column exists from the start. |

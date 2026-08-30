@@ -1,125 +1,130 @@
 # Butterloom Data Model
 
-Status: **for review.** Not implemented. Proposed schema for verification.
+Status: **revised after review.** Not implemented.
 
 Conventions: every table has `id`, `created_at`, `updated_at` unless stated. Money is
-`integer` whole taka (no poisha) — see `docs/PLAN.md` §2. Locale is an enum `('en','bn')`,
-with `en` the default. Decisions marked **[VERIFY]** need your confirmation.
+`integer` whole taka — no poisha. Locales are `en` (default) and `bn`. Requirements marked
+**[C]** are compliance-driven; see `docs/COMPLIANCE.md` for the source and tier.
+
+Four modelling decisions were taken in review and are settled: bilingual content uses
+per-locale **column pairs**; variants use a **generic option system**; order lines snapshot
+titles in the **order's locale only**; the cart lives in the **browser**.
 
 ---
 
-## 1. How bilingual content is stored
+## 1. Bilingual content
 
-Content splits into three kinds, and only the first is translated:
+Every translatable field is a **column pair**: `title_en`, `title_bn`.
 
-| Kind | Examples | Treatment |
-|---|---|---|
-| Authored content | product title, description, care notes, collection name, colour name, image alt text | **Translated** — one row per locale |
-| Locale-neutral data | SKU, price, stock, phone, size label (`S`, `M`, `40`), slug | **Not translated** — single column |
-| Customer-entered text | street address, order notes | **Not translated** — stored verbatim in whatever script the customer typed |
+**Rule: `_en` is required and non-empty; `_bn` is nullable.** Rendering falls back to `_en`
+when the Bangla value is null, so a product can launch before its Bangla copy is written.
+Storing `''` rather than `NULL` for a missing translation defeats the fallback — the
+schema should enforce `CHECK (bn_field IS NULL OR length(trim(bn_field)) > 0)`.
 
-**Proposed pattern: side tables, one row per locale.** [VERIFY]
+Not translated: SKU, slug, price, stock, phone numbers, and customer-entered text
+(street addresses, order notes) which is stored verbatim in whatever script was typed.
 
-```
-products                       product_translations
-  id                             product_id   ─┐ composite
-  slug          ◄────────────    locale       ─┘ primary key
-  status                         title
-  ...                            subtitle
-                                 description
-                                 care_notes
-```
+**[C]** Terms, and the return/refund/exchange policy, must exist in Bengali. For those
+specific documents `_bn` is *required*, not optional — the fallback rule does not apply.
 
-Rejected alternative — `title_en` / `title_bn` column pairs, or a `jsonb` blob per field.
-Both are simpler to query, but adding a third locale means a migration on every content
-table, and neither can express "this product is published in English but its Bangla copy
-is still being written." The side table gets partial translation for free: a missing row
-is a missing translation, and the app falls back to `en`.
-
-**Fallback rule:** if a `bn` row is absent, render `en`. Never render an empty string.
-This means Bangla can be filled in progressively rather than blocking a product launch.
+> Trade-off accepted knowingly: adding a third locale means a migration across every
+> content table. See ADR 0004.
 
 ---
 
 ## 2. Catalog
 
 ### `collections`
-`id`, `slug` (unique), `status` (`draft|active|archived`), `position`
-
-### `collection_translations`
-PK (`collection_id`, `locale`) · `title`, `description`
+`slug` (unique), `title_en`, `title_bn`, `description_en`, `description_bn`,
+`status` (`draft|active|archived`), `position`
 
 ### `products`
-| Column | Type | Notes |
-|---|---|---|
-| `slug` | text unique | URL identity, ASCII, locale-neutral |
-| `collection_id` | fk nullable | |
-| `status` | enum | `draft` / `active` / `archived` — never hard-delete a product that has been ordered |
-| `position` | int | manual merchandising order |
-| `published_at` | timestamptz null | |
+| Column | Notes |
+|---|---|
+| `slug` | unique, ASCII, locale-neutral URL identity |
+| `collection_id` | fk nullable |
+| `title_en` / `title_bn` | |
+| `subtitle_en` / `subtitle_bn` | |
+| `description_en` / `description_bn` | |
+| `material_en` / `material_bn` | **[C]** mandatory pre-purchase disclosure |
+| `measurements_en` / `measurements_bn` | **[C]** mandatory |
+| `country_of_origin` | **[C]** mandatory; ISO code, not translated |
+| `care_en` / `care_bn` | |
+| `status` | `draft｜active｜archived` — never hard-delete an ordered product |
+| `position`, `published_at` | |
 
 A Product is **not purchasable**. It is the merchandising unit a customer browses.
 
-### `product_translations`
-PK (`product_id`, `locale`) · `title`, `subtitle`, `description`, `care_notes`
+### Variant options — generic axes
+
+Sizes and colours are not special-cased. A Product declares its own axes, so fabric,
+sleeve length or set-versus-piece can be added later without a migration.
+
+```
+products
+  └─ product_options            (Size, Colour, Fabric …)   position
+       └─ product_option_values (M, Maroon, Silk …)        position
+              ▲
+              │  variant_option_values  (join)
+              ▼
+         variants
+```
+
+**`product_options`** — `product_id`, `name_en`, `name_bn`, `position`
+
+**`product_option_values`** — `option_id`, `value_en`, `value_bn`, `hex` (nullable, for
+colour swatches), `position`
+
+**`variant_option_values`** — PK (`variant_id`, `option_value_id`)
 
 ### `variants`
-The purchasable unit. Every add-to-cart references a Variant.
+| Column | Notes |
+|---|---|
+| `product_id` | |
+| `sku` | unique, operator-facing, appears on packing slips |
+| `option_signature` | **see below** |
+| `price_taka` | int — price lives here, so a 3XL can cost more than an S |
+| `compare_at_taka` | int nullable |
+| `weight_grams` | int, required — the courier quotes on weight |
+| `on_hand` | int, physically present |
+| `reserved` | int, promised to placed but undispatched orders |
+| `status` | `active｜archived` |
 
-| Column | Type | Notes |
-|---|---|---|
-| `product_id` | fk | |
-| `sku` | text unique | operator-facing, locale-neutral, appears on packing slips |
-| `size_label` | text | `S`, `M`, `40` — script-neutral, deliberately not translated |
-| `colour_id` | fk nullable | → `colours` |
-| `price_taka` | int | **price lives here**, so a 3XL can cost more than an S |
-| `compare_at_taka` | int null | for strikethrough pricing |
-| `weight_grams` | int | **required** — the courier quotes on weight |
-| `on_hand` | int | physically in the room |
-| `reserved` | int | promised to placed, undispatched orders |
-| `status` | enum | `active` / `archived` |
+Constraints: `on_hand >= 0`, `reserved >= 0`, `reserved <= on_hand`,
+**`unique(product_id, option_signature)`**.
 
-Constraints: `unique(product_id, size_label, colour_id)`; `on_hand >= 0`;
-`reserved >= 0`; `reserved <= on_hand`.
+**`option_signature` is the price of choosing generic options.** A join table cannot express
+"no two variants of a product may share the same combination of option values" as a database
+constraint, so duplicates become an application-logic problem — and application logic loses
+races. The signature is a deterministic string built from the variant's option value IDs
+sorted ascending (e.g. `12-47`), written in the same transaction as the join rows. That
+restores a real uniqueness guarantee at the database level.
 
-Available stock, everywhere in the app, is `on_hand - reserved`.
+It must be recomputed whenever a variant's option values change, and it is derived data —
+if it ever disagrees with `variant_option_values`, the join table is the truth.
 
-### `colours`
-`id`, `hex`, `position` — a shared palette rather than free text per variant, so "Maroon"
-is spelled and translated once.
-
-### `colour_translations`
-PK (`colour_id`, `locale`) · `name`
+Available stock, everywhere, is `on_hand - reserved`.
 
 ### `media`
-`product_id`, `variant_id` (nullable — a shot may be colour-specific), `path`, `width`,
-`height`, `position`, `is_primary`
+`product_id`, `variant_id` (nullable — a shot may be specific to one colour), `path`,
+`width`, `height`, `position`, `is_primary`, `alt_en`, `alt_bn`
 
-### `media_translations`
-PK (`media_id`, `locale`) · `alt_text` — alt text is authored content and required, not optional.
+Alt text is authored content and required, not optional.
 
 ---
 
 ## 3. Inventory
 
 ### `stock_movements`
-Append-only. Current stock must be reconcilable from this log; if the counters on
-`variants` ever disagree with the sum here, the log is right.
+Append-only. Current stock must be reconcilable from this log; where the counters on
+`variants` disagree with the sum here, the log is right.
 
-| Column | Notes |
-|---|---|
-| `variant_id` | |
-| `on_hand_delta` | signed int, default 0 |
-| `reserved_delta` | signed int, default 0 |
-| `reason` | `initial` / `reserve` / `release` / `dispatch` / `restock` / `correction` / `return` |
-| `order_id` | nullable — set for order-driven movements |
-| `staff_user_id` | nullable — set for manual corrections |
-| `note` | free text, required for `correction` |
+`variant_id`, `on_hand_delta` (signed, default 0), `reserved_delta` (signed, default 0),
+`reason` (`initial｜reserve｜release｜dispatch｜restock｜correction｜return`),
+`order_id` (nullable), `staff_user_id` (nullable), `note` (required for `correction`)
 
 Two delta columns rather than one, because reserving stock and shipping it move different
 counters and a single `delta` cannot express both.
-
-Movement pattern across an order's life:
 
 | Event | `on_hand_delta` | `reserved_delta` |
 |---|---|---|
@@ -128,36 +133,41 @@ Movement pattern across an order's life:
 | Order dispatched | `-qty` | `-qty` |
 | Parcel returned | `+qty` | 0 |
 
+**[C]** Live stock must be shown on the product page, and checkout must be blocked at zero.
+
 ---
 
-## 4. Customers and addresses
+## 4. Customers, addresses and consent
 
 ### `customers`
-`phone` (unique, normalised), `name`, `email` (nullable), `default_locale`, `blocked`
-(bool), `blocked_reason`, `internal_note`
+`phone` (unique, normalised), `name`, `email` (nullable), `default_locale`,
+`blocked` (bool), `blocked_reason`, `internal_note`
 
-**Phone is the identity key**, not email — that is how this market works. Guest checkout
-still creates or matches a customer row by phone, which is what makes repeat-customer
-recognition and COD-abuse blocking possible later without a migration.
-
-Normalisation matters: `01712345678`, `+8801712345678` and `8801712345678` are one
-customer. Store one canonical form.
+**Phone is the identity key**, not email. Guest checkout still matches or creates a
+customer row by phone, which is what makes repeat recognition and COD-abuse blocking
+possible without a later migration. Normalise: `01712345678`, `+8801712345678` and
+`8801712345678` are one customer.
 
 ### `addresses`
-| Column | Notes |
-|---|---|
-| `customer_id` | |
-| `recipient_name`, `recipient_phone` | may differ from the customer — gifts are common |
-| `street_address` | free text, customer's own script |
-| `landmark` | nullable — genuinely used for navigation in Dhaka |
-| `courier_namespace` | e.g. `pathao` — **the area IDs below belong to one courier's numbering** |
-| `city_id`, `zone_id`, `area_id` | int — the Delivery Area triple |
-| `city_name`, `zone_name`, `area_name` | text snapshots |
+`customer_id`, `recipient_name`, `recipient_phone`, `street_address` (verbatim),
+`landmark` (nullable — genuinely used for navigation in Dhaka), `courier_namespace`,
+`city_id` / `zone_id` / `area_id`, `city_name` / `zone_name` / `area_name`
 
-Both IDs and names are stored: IDs are what the courier API accepts, names are what a
-printed packing slip and a human need. `courier_namespace` exists because those IDs are
-Pathao's numbering, not universal — switching couriers invalidates them, and silently
-reusing them would misroute parcels.
+IDs are what the courier API accepts; names are what a packing slip and a human need.
+`courier_namespace` exists because those IDs are one courier's numbering — switching
+couriers invalidates them, and silently reusing them would misroute parcels.
+
+### `consents` **[C]**
+`customer_id` (nullable — consent may precede a customer record), `purpose`,
+`policy_version`, `granted` (bool), `granted_at`, `withdrawn_at`, `ip`, `user_agent`
+
+Consent must be timestamped and **versioned against the policy text in force at the time**.
+A boolean column on `customers` cannot answer "what exactly did they agree to, and when",
+which is the question the regulator asks. Append-only; withdrawal writes a new row.
+
+**[C]** Rectification requests must be satisfiable within 30 days. Erasure applies only to
+data outside the six-year mandated set, so deletion is implemented as **scoped redaction,
+never `DELETE`** — see §8.
 
 ---
 
@@ -166,116 +176,213 @@ reusing them would misroute parcels.
 ### `orders`
 | Column | Notes |
 |---|---|
-| `order_number` | text unique — human-quotable, e.g. `BL-26-0042` |
-| `customer_id` | fk |
-| `locale` | the language the order was placed in |
-| `status` | enum, see `docs/PLAN.md` §4 |
-| `payment_method` | `cod` / `bkash` / `card` |
-| `subtotal_taka` | int | 
-| `delivery_charge_taka` | int |
-| `discount_taka` | int, `0` in v1 |
-| `total_taka` | int |
-| `amount_to_collect_taka` | int — equals `total` for pure COD, `0` if prepaid |
+| `order_number` | unique, human-quotable, e.g. `BL-26-0042` |
+| `customer_id`, `locale` | the language the order was placed in |
+| `status` | see `docs/PLAN.md` §4 |
+| `payment_method` | `cod｜bkash｜card` |
+| `subtotal_taka`, `delivery_charge_taka`, `discount_taka`, `total_taka` | int |
+| `vat_rate_bp`, `vat_amount_taka` | **[C]** rate stored per order — it has changed twice in a year |
+| `amount_to_collect_taka` | equals `total` for pure COD, `0` if prepaid |
 | customer snapshot | `customer_name`, `customer_phone`, `customer_email` |
 | address snapshot | every field from `addresses`, copied |
-| `customer_note` | what the customer typed |
-| `internal_note` | operator-only |
-| `cancellation_reason` | nullable |
+| `sla_due_at` | **[C]** placement + 5 days inside the city, 10 outside |
+| `handover_due_at` | **[C]** payment + 48h, for prepaid orders |
+| `sla_breached` | bool, set by a scheduled check |
+| `customer_note`, `internal_note`, `cancellation_reason` | |
 
-**Everything commercial is a snapshot, written once.** Money, customer details and
-address are copied onto the order at placement and never recomputed. Editing a product
-price, or a customer editing their saved address, must not change a placed order.
+**Everything commercial is a snapshot, written once.** Money, VAT rate, customer details
+and address are copied at placement and never recomputed. A price change tomorrow, or a
+customer editing a saved address, must not alter a placed order.
+
+`vat_rate_bp` is stored per order rather than read from settings at render time for the
+same reason — reprinting an old invoice must reproduce the original tax treatment.
 
 ### `order_lines`
 `order_id`, `variant_id` (fk, `ON DELETE SET NULL` — the reference is a convenience, the
-snapshot is the truth), `sku`, `title_en`, `title_bn`, `size_label`, `colour_name_en`,
-`colour_name_bn`, `unit_price_taka`, `quantity`, `line_total_taka`
+snapshot is the truth), `sku`, `title`, `options_label`, `unit_price_taka`, `quantity`,
+`line_total_taka`
 
-**Titles snapshot in both languages** [VERIFY], not just the order's locale. Two short
-strings, and it removes an ambiguity that would otherwise bite: a customer orders in
-Bangla, an operator picks and packs reading English. Storing only the order locale forces
-a live lookup that defeats the point of snapshotting.
+`title` and `options_label` are captured **in the order's locale**, per the review
+decision. `options_label` is the flattened option combination (`M · Maroon`) at time of
+order, so a renamed option value cannot alter order history.
+
+> Consequence to design around: a Bangla order shows Bangla titles on operator screens.
+> Packing slips and the admin order list should lead with **SKU**, which is locale-neutral,
+> rather than relying on the title for picking.
 
 ### `order_events`
-Append-only: `order_id`, `from_status`, `to_status`, `actor_type` (`staff|system|customer`),
-`actor_id`, `note`, `created_at`. The authoritative history. Denormalised
-`confirmed_at` / `dispatched_at` / `delivered_at` columns on `orders` are permitted as
-query conveniences, derived from this.
+Append-only: `order_id`, `from_status`, `to_status`, `actor_type` (`staff｜system｜customer`),
+`actor_id`, `note`. The authoritative history; denormalised `confirmed_at` /
+`dispatched_at` / `delivered_at` on `orders` are query conveniences derived from it.
 
 ### `payments`
-`order_id`, `method`, `status` (`pending|paid|failed|refunded`), `amount_taka`,
+`order_id`, `method`, `status` (`pending｜paid｜failed｜refunded`), `amount_taka`,
 `provider`, `provider_reference`, `paid_at`, `raw_payload` (jsonb)
 
-Modelled from day one although v1 only ever writes `cod`. Retrofitting a payments table
-under live orders is materially harder than carrying an almost-empty one.
+Modelled from day one although v1 only ever writes `cod`; retrofitting under live orders
+is materially harder than carrying an almost-empty table.
+
+### `refunds` **[C]**
+`order_id`, `payment_id` (nullable), `amount_taka`, `reason`, `channel`, `status`,
+`due_at`, `initiated_at`, `completed_at`, `transaction_charge_taka`
+
+Refunds must go back through **the same channel** the customer paid by, within **10 days**
+of a failed delivery, or **72 hours** in force-majeure cases after a 48-hour notification.
+`due_at` makes the deadline queryable rather than remembered. The seller bears the
+transaction charge, which is why it is recorded separately.
 
 ### `consignments`
-`order_id`, `courier`, `consignment_ref` (the courier's ID), `status`,
-`delivery_fee_taka`, `cod_fee_taka`, `amount_to_collect_taka`, `idempotency_key`,
-`settlement_ref`, `settled_at`, `raw_payload` (jsonb)
+`order_id`, `courier`, `consignment_ref`, `status`, `delivery_fee_taka`, `cod_fee_taka`,
+`amount_to_collect_taka`, `idempotency_key`, `settlement_ref`, `settled_at`,
+`raw_payload` (jsonb)
 
-An Order may have several Consignments over time if a delivery fails and is re-attempted,
-but only one active. `idempotency_key` derives from the order number: ADR 0003 showed a
-courier request can succeed on their side while appearing to fail on ours, so a blind
-retry must not create a second parcel.
+An Order may have several Consignments over time if delivery fails and is re-attempted,
+but only one active. `idempotency_key` derives from the order number: ADR 0003 established
+that a courier request can succeed on their side while appearing to fail on ours, so a
+blind retry must not create a second parcel.
 
 `delivery_fee_taka` and `cod_fee_taka` are **Butterloom's costs**, not customer-facing.
-They live here, not on the order, because they are margin accounting.
+They live here rather than on the order because they are margin accounting.
 
 ---
 
-## 6. Operations
+## 6. Compliance surfaces that are also features
+
+These were originally scoped out of v1 as "nice to have". They are not optional — each is
+required by the Digital Commerce Operation Guidelines.
+
+### `invoices` **[C]**
+`order_id`, `serial` (unique, **monotonic**), `issued_at`, `supplier_name`,
+`supplier_address`, `supplier_bin` (nullable), `buyer_name`, `buyer_address`,
+`buyer_bin` (nullable), `line_snapshot` (jsonb), `subtotal_taka`, `vat_rate_bp`,
+`vat_amount_taka`, `total_taka`, `authorised_by`
+
+A receipt itemising VAT and other charges is required **regardless of VAT registration**.
+The nine fields Mushak 6.3 mandates are carried from day one and lie dormant until a BIN
+exists, so registering for VAT later is a configuration change rather than a rebuild.
+
+The serial must be **monotonic and gapless** — that is a statutory property, so it cannot
+be a random ID or a database sequence that rolls back with a failed transaction. Allocate
+it in a dedicated counter row at issue time, not at order placement.
+
+### `complaints` **[C]**
+`order_id` (nullable), `customer_id`, `channel`, `subject`, `body`, `status`,
+`opened_at`, `due_at` (opened + 72h), `assigned_staff_id`, `resolved_at`, `resolution_note`
+
+Complaints must be acknowledged and resolved **within 72 hours**, with a named compliance
+officer contactable on the site. `due_at` is stored so the queue can be sorted by urgency
+and breaches alerted on, rather than discovered.
+
+### `reviews` **[C]**
+`product_id`, `customer_id`, `order_id` (nullable — verifies purchase), `rating`,
+`body`, `locale`, `status`, `removed_reason`, `removed_by`, `published_at`
+
+**Negative reviews may not be deleted**, and nobody connected to the vendor may post one.
+`status` is therefore deliberately narrow: `published`, or `removed_for_policy` with a
+mandatory reason and actor recorded. There is no `hidden` state and no hard delete — the
+schema should make suppressing bad feedback visibly auditable rather than convenient.
+
+### `notifications` **[C]**
+`order_id`, `customer_id`, `channel` (`sms｜email｜call`), `template_key`, `locale`,
+`to_address`, `body`, `provider`, `provider_ref`, `status`, `sent_at`, `failed_reason`
+
+Customers must be notified when goods are handed to the courier. A log is what proves the
+notification happened. It also carries the SMS constraints: templates are **Bengali**, with
+OTP codes, numbers and URLs left in Latin script, sent through a **BTRC-enlisted local
+aggregator** with a registered sender ID of at most 11 characters. International routing
+is prohibited, so a global provider is not a compliant path.
+
+### `cod_risk_checks`
+`order_id`, `phone`, `provider`, `score`, `raw_payload` (jsonb), `decision`
+(`accept｜require_prepayment｜decline`), `decided_by`, `checked_at`
+
+The pre-dispatch fraud gate. Courier fraud-check services score a phone number against its
+historical success and cancellation ratio across couriers. This runs **before dispatch, not
+at checkout** — gating checkout costs conversions in a market where COD is the default.
+
+Note the legal ceiling on the mitigation: advance payment above **10%** of price is not
+permitted for goods that cannot be handed to a courier within 48 hours, absent a
+Bangladesh Bank–approved escrow. Fine for in-stock inventory; not available for pre-orders.
+
+---
+
+## 7. Operations
 
 ### `staff_users`
-`email` unique, `password_hash`, `name`, `role` (`admin` for now), `active`, `last_login_at`
-
-The role column exists from the start even with one value, so a packer can be added later
+`email` (unique), `password_hash`, `name`, `role` (`admin` for now), `active`,
+`last_login_at`. The role column exists from the start so a packer can be added later
 without a migration under live data.
 
 ### `audit_events`
 `actor_type`, `actor_id`, `action`, `subject_type`, `subject_id`, `before` (jsonb),
-`after` (jsonb), `ip`, `created_at`
+`after` (jsonb), `ip`
 
-Every stock change, price change, status transition and refund. With two operators and
-cash moving through a third party, "who marked this delivered" must be answerable.
+Every stock change, price change, status transition, review removal and refund. With two
+operators and cash moving through a third party, "who marked this delivered" must be
+answerable.
 
 ### `settings`
-`key` unique, `value` (jsonb), `updated_by`, `updated_at`
+`key` (unique), `value` (jsonb), `updated_by`
 
-Delivery charges, free-delivery threshold and COD limits live here rather than in code,
-so an operator can change them without a deploy.
+Holds delivery charges, free-delivery threshold, COD limits, **the VAT rate**, SLA day
+counts, the compliance officer's contact details, and the business identifiers the site
+must display: **trade licence, DBID, BIN and TIN** **[C]**.
+
+The VAT rate belongs here and never in code — it moved 7.5% → 15% → 10% for own-brand
+clothing retail within January 2025 alone.
 
 ### `delivery_rates`
 `courier_namespace`, `city_id` (nullable — null means "everywhere else"), `rate_taka`,
-`free_over_taka`, `active`
+`free_over_taka`, `sla_days`, `active`
 
-A small table rather than a config constant, because inside-Dhaka versus outside-Dhaka
-pricing is the standard local model and the figures will be tuned repeatedly.
-
----
-
-## 7. The cart
-
-**Proposed: the cart lives in the browser, not the database.** [VERIFY]
-
-It stores only `variant_id` and `quantity` — **never a price**. Prices are resolved
-server-side at checkout, every time.
-
-This is a correctness rule, not an optimisation: a cart that carries its own prices is a
-cart a customer can edit. It also means a price change between adding to cart and
-checking out is handled correctly and visibly, rather than honouring a stale number.
-
-The cost is no abandoned-cart analytics and no cross-device carts. Both are addable later
-as a `carts` table without changing anything above.
+`sla_days` lives with the rate because the statutory delivery window differs by
+destination — 5 days inside the city, 10 outside — and both derive from the same
+geography.
 
 ---
 
-## 8. What is deliberately absent
+## 8. Retention, deletion and the six-year rule **[C]**
 
-- **No customer passwords or sessions.** Guest checkout with order lookup by phone plus
-  order number. Adding accounts later needs a `customer_credentials` table and nothing else.
-- **No discount or promotion tables.** v1 has none; `discount_taka` exists on the order
-  so adding them does not touch order history.
-- **No `product.price`.** Price is a Variant property. A Product-level price would be a
-  lie the moment two sizes differ.
-- **No soft-delete flags.** Archival status instead, so ordered products stay resolvable.
+Transactions, customer data and complaint records must be retained **six years**. Data
+protection law simultaneously grants erasure rights. Retention wins for anything inside
+the mandated set, so:
+
+- **Nothing in the order path is ever hard-deleted.** No `DELETE` on orders, order lines,
+  payments, invoices, consignments, complaints or audit events.
+- **Erasure is scoped redaction.** A customer exercising erasure has their contact details
+  and address redacted in place, with the redaction recorded as an audit event. Order
+  totals, dates, line items and invoice records survive, because those are the mandated
+  business record.
+- **Products and variants are archived, never deleted**, so historic orders stay resolvable.
+- **Rectification** — correcting a name or phone — must be possible within 30 days, and
+  changes an *address record*, never an order's address snapshot.
+
+This is why §5 snapshots so aggressively: it is what lets customer records be redacted
+without destroying the commercial history that must survive.
+
+---
+
+## 9. The cart
+
+**The cart lives in the browser**, holding `variant_id` and `quantity` only — **never a
+price**. Prices resolve server-side at checkout, every time.
+
+This is a correctness rule, not an optimisation: a cart carrying its own prices is a cart
+the customer can edit. It also means a price change between adding and checking out is
+handled visibly rather than by honouring a stale number, which matters because CRPA s.40
+makes charging anything other than the displayed price an offence.
+
+Cost: no abandoned-cart analytics, no cross-device carts. Both are addable later as a
+`carts` table without touching anything above.
+
+---
+
+## 10. Deliberately absent
+
+- **No customer passwords or sessions.** Guest checkout, order lookup by phone plus order
+  number. Accounts later need a `customer_credentials` table and nothing else.
+- **No discount tables.** `discount_taka` exists on the order so promotions can arrive
+  without touching order history.
+- **No `product.price`.** Price is a Variant property; a Product-level price becomes a lie
+  the moment two sizes differ.
+- **No soft-delete flags.** Archival status instead — see §8.
