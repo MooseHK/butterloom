@@ -356,8 +356,16 @@ The VAT rate belongs here and never in code — it moved 7.5% → 15% → 10% fo
 clothing retail within January 2025 alone.
 
 ### `delivery_rates`
-`courier_namespace`, `city_id` (nullable — null means "everywhere else"), `rate_taka`,
-`free_over_taka`, `sla_days`, `active`
+`courier_namespace`, `band` (`inside_dhaka｜suburb｜outside_dhaka`), `city_id` (nullable),
+`zone_id` (nullable), `rate_taka`, `free_over_taka`, `sla_days`, `active`
+
+**A city-level key is not enough.** Courier pricing has a distinct suburb tier — Savar,
+Keraniganj, Dohar, Tongi, Gazipur, Narayanganj — that sits between "inside Dhaka" and
+"outside Dhaka" and is priced roughly 40 taka above the city rate. Those areas resolve at
+*zone* granularity, not city, so matching on `city_id` alone would silently charge suburb
+deliveries at the city rate and lose the difference on every parcel.
+
+Resolution is most specific first: `zone_id`, then `city_id`, then the `band` default.
 
 `sla_days` lives with the rate because the statutory delivery window differs by
 destination — 5 days inside the city, 10 outside — and both derive from the same

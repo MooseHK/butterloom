@@ -44,6 +44,13 @@ turnover (lowered from Tk 3 crore in January 2025); turnover tax applies from Tk
 **International SMS routing is prohibited** for local OTP delivery, so Twilio and similar
 global providers are not a compliant path. A BTRC-enlisted local aggregator is required.
 
+**Advertise delivery timelines in calendar days, not business days.** The 5-day same-city
+and 10-day elsewhere limits count calendar days, while the market almost universally
+quotes business days — so a promise of "5–8 business days" is 7–11 calendar days and
+breaches the same-city SLA. At least one major Bangladeshi fashion retailer is currently
+advertising in breach on this basis. Quoting calendar days costs nothing competitively
+and removes the exposure entirely.
+
 **Data protection is in force.** The Personal Data Protection Act 2026 became law on
 15 April 2026 (Ordinance gazetted November 2025). This corrects an assumption carried
 earlier in this project that Bangladesh had only a draft bill — several law-firm summaries

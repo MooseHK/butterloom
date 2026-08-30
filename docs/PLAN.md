@@ -494,14 +494,123 @@ non-response can default sensibly rather than block.
 | # | Decision | Recommendation |
 |---|---|---|
 | 1 | ~~Storefront language~~ | **Settled: English only** (ADR 0006), with an optional alternative product name operators can enter. The typeface must still carry Bangla coverage — for the mandatory Bengali policy pages and for those alternative names. |
-| 2 | **Delivery charge model** | Flat inside Dhaka, higher outside, free over a threshold. Confirm the actual figures you intend to charge — they belong in configuration, not code. |
+| 2 | **Delivery charge model** | Three bands — inside Dhaka, suburb, outside Dhaka — with free delivery over a threshold. **Proposed figures: Tk 80 / 110 / 130, free over Tk 3,000**, benchmarked against published courier rates and competitor pricing in §15. Confirm or adjust; they live in `delivery_rates`, not code. |
 | 3 | ~~Hosting and database~~ | **Settled: a single self-managed VPS with Postgres** (ADR 0007); see `docs/DEPLOYMENT.md`. Region still needs measuring from a Dhaka connection — Mumbai is closer on a map but cable routing often favours Singapore. |
 | 4 | ~~VAT treatment~~ | **Settled: display VAT-inclusive, itemise on the invoice.** Charging above the displayed price is an offence (CRPA s.40). The *rate* remains open and must be configurable — it moved 7.5% → 15% → 10% within January 2025; confirm the current figure with a VAT consultant. |
-| 5 | ~~Return and exchange policy~~ | **Settled: exchange only, on every payment method.** Size or colour exchange within a stated window; cash refunds only where regulation compels them — failed delivery, defective, wrong item — within **10 days** via the same channel paid, plus 48h-notify / 72h-refund for force majeure. Policy **must be published in Bengali**. Two sub-items still open: the exchange **window in days**, and **who pays return shipping** — both pending the market research. |
+| 5 | ~~Return and exchange policy~~ | **Settled: exchange only, on every payment method.** Cash refunds only where regulation compels — failed delivery, defective, wrong item — within **10 days** via the same channel paid, plus 48h-notify / 72h-refund for force majeure. Policy **must be published in Bengali**. Proposed terms in §15: 7-day exchange window, customer pays return carriage on size or colour, Butterloom pays on its own error. |
 | 6 | **Anti-refusal measure** | Operator phone confirmation for v1, plus a pre-dispatch courier fraud-check gate (`cod_risk_checks`). Note the legal ceiling: advance payment above **10%** is not permitted for goods not shippable within 48h, so partial-advance is available only for in-stock inventory. |
 | 7 | ~~Guest checkout or accounts~~ | **Settled: guest only**, with order lookup by phone plus order number. A Customer record is still created keyed on phone, so repeat recognition and COD blocking work without anyone signing in. Accounts later need one credentials table. |
 | 8 | ~~Product photography~~ | **Out of scope as a project decision** — how photographs get made is Butterloom's own call. What this project owes is that managing them is easy: drag-and-drop upload with progress, automatic resizing, drag reordering, alt text prompted at upload, in-place replacement, and draft preview at the real product URL before publishing. See §9. |
 | 9 | **Operator roles** | Who are the two people, and does either need restricting later? Affects nothing now if the role column exists from the start. |
+
+---
+
+## 15. Delivery and returns, benchmarked
+
+Figures below come from published courier rate cards and competitors' own policy pages
+(sources in the research thread; the primary ones are Pathao's help centre, Steadfast's
+pricing endpoint, Paperfly's charges page, and the retailers' own returns pages).
+
+### What delivery actually costs Butterloom
+
+Per parcel up to 1 kg, picked up in Dhaka. The three couriers with published rates land
+within a few taka of each other:
+
+| Route | Pathao | Steadfast | Paperfly |
+|---|---|---|---|
+| Inside Dhaka | 60–70 | 65–75 | 70 |
+| Suburb (Savar, Gazipur, Narayanganj, Keraniganj, Tongi) | 80–100 | 105 | 110 |
+| Outside Dhaka | 110–130 | 115–135 | 130 |
+
+Plus roughly **1% COD collection**. RedX publishes nothing — rates appear only after
+merchant signup, so treat any figure for them as unconfirmed.
+
+**Two things that matter more than the headline rate**, and only show up on a refused
+parcel:
+
+- **Return-to-origin treatment differs sharply.** Pathao charges 50% of the delivery cost
+  on a return but exempts Dhaka metro; Steadfast charges nothing for the return leg but
+  still bills the forward leg on a refusal; Paperfly charges no return fee and applies 0%
+  COD same-city. Given COD refusal is the defining operational risk, **RTO terms should
+  weigh more heavily than the per-parcel rate when the courier is chosen.**
+- **Steadfast's published rates exclude VAT; Paperfly's include it.** They are not
+  comparable as printed.
+
+### What competitors charge customers
+
+| | Range | Typical |
+|---|---|---|
+| Inside Dhaka | 50–100 | **70–80** |
+| Outside Dhaka | 100–150 | **120–130** |
+
+Aarong charges 80 inside Dhaka and 100 outside; Yellow, Le Reve and SaRa give delivery
+free unconditionally, absorbing it into product price.
+
+**Nobody makes money on delivery in this market.** Inside Dhaka the typical customer
+charge (70–80) roughly equals merchant cost (~70); outside Dhaka the typical charge
+(120–130) sits at or slightly below cost (~130–135). Delivery is priced at cost or as a
+mild subsidy, so treating it as a margin line would put Butterloom visibly above the
+market on the most price-legible number on the checkout page.
+
+### Proposed charges
+
+| Band | Charge | Rationale |
+|---|---|---|
+| Inside Dhaka | **Tk 80** | Covers ~70 cost plus the 1% COD fee; matches Aarong |
+| Suburb | **Tk 110** | At cost |
+| Outside Dhaka | **Tk 130** | At cost; mid-market |
+| Free delivery over | **Tk 3,000** | Market thresholds cluster at Tk 2,000–3,000 |
+
+On the threshold: no reliable fashion AOV for Bangladesh exists publicly — the two e-CAB
+figures in circulation (Tk 1,400 and Tk 2,150) contradict each other and neither is
+verifiable at source. The better revealed signal is that competitors set thresholds at
+Tk 2,000–3,000, implying operators believe that band sits meaningfully above a typical
+order. Ethnic clothing should run above the general basket, so Tk 3,000 is the safer end.
+
+### Advertised delivery timelines — a compliance trap
+
+**The market advertises in *business* days; the regulation counts *calendar* days.** Most
+brands promise 2–4 business days inside Dhaka and sit safely inside the 5-day SLA, but
+Aarong's 3–4 business days is 4–6 calendar days — at the line — and Yellow's 5–8 business
+days (7–11 calendar) **breaches the same-city SLA outright**, with its sale-period 8–10
+business days passing the 10-day outside-Dhaka limit too.
+
+Butterloom should **advertise in calendar days**: 2–4 inside Dhaka, 4–7 outside. That is
+competitive with what everyone else promises and comfortably inside the statutory window,
+and it avoids inheriting an exposure much of the market is carrying unnoticed.
+
+### Returns — what the market actually does
+
+Change-of-mind returns are essentially **not offered** by anyone. Exchange is the standard
+remedy and monetary refunds are rare — Yellow states plainly that *"monetary refunds are
+not available"*, and Aarong's remedy is a credit note or exchange, not cash. The
+exchange-only decision therefore sits squarely in market norm rather than below it.
+
+Consistent patterns across every retailer examined:
+
+- **A 24-hour notification window is the real gate**, not the headline window. Aarong,
+  Sailor and Le Reve all require contact within 24 hours to 7 days of receipt, with a
+  longer period only for physically returning the garment.
+- **Inspection at the door**, in front of the courier, is the standard mechanism. Deshal
+  states outright that no complaint is entertained after the parcel is accepted.
+- **Sale and discounted items are excluded almost universally.**
+- **Innerwear, lingerie and unstitched fabric are excluded universally.**
+- **The customer pays return carriage on change of mind; the merchant pays on defect.**
+  Deshal charges Tk 150 for an online exchange, Blucheez deducts Tk 80 inside Dhaka and
+  Tk 200 outside, BBDhaka Tk 70 and Tk 150.
+
+### Proposed return terms
+
+- **Exchange window: 7 days from delivery**, unworn with tags, once per order. More
+  generous than the 24-hour notification the market gates on, and simpler to state than a
+  split notify/return window — a plain, honest 7 days is itself a differentiator where
+  competitors bury a 24-hour clause.
+- **Return carriage: the customer pays for a size or colour exchange; Butterloom pays
+  when Butterloom is at fault** — defective, wrong item, not as described. Market standard.
+  Consider absorbing the first exchange inside Dhaka as a trust-building measure; at ~Tk 80
+  it is cheap against the conversion barrier a new brand faces.
+- **Exclusions: sale and discounted items, innerwear, unstitched fabric.** Universal in
+  this market; departing from it would be unusual rather than generous.
 
 ---
 
