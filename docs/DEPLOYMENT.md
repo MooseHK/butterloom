@@ -58,10 +58,10 @@ a broadband line settle it in an afternoon and cannot be reasoned about from her
 
 **There is no staging server**, deliberately — a second always-on environment for two
 operators costs more in drift and maintenance than it returns. What replaces it is a
-**migration rehearsal**: before any release carrying a schema change, restore the latest
-production backup into a throwaway local database and run the migration against it. That
-tests the migration against real data shapes, which a staging server with synthetic data
-would not.
+**Migration rehearsal:** before any release carrying a schema change, restore the latest
+production backup only into an access-controlled ephemeral environment that meets the
+production security baseline, run the migration, and destroy it. Local rehearsals must use
+sanitised fixtures; never copy production customer data to a developer machine.
 
 ## 4. Deploy pipeline
 
