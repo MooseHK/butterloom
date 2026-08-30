@@ -197,6 +197,7 @@ never `DELETE`** — see §8.
 | `sla_due_at` | **[C]** placement + 5 days inside the city, 10 outside |
 | `handover_due_at` | **[C]** payment + 48h, for prepaid orders |
 | `sla_breached` | bool, set by a scheduled check |
+| `return_policy_version` | **[C]** which published policy governs this order |
 | `customer_note`, `internal_note`, `cancellation_reason` | |
 
 **Everything commercial is a snapshot, written once.** Money, VAT rate, customer details
@@ -228,13 +229,29 @@ Modelled from day one although v1 only ever writes `cod`; retrofitting under liv
 is materially harder than carrying an almost-empty table.
 
 ### `refunds` **[C]**
-`order_id`, `payment_id` (nullable), `amount_taka`, `reason`, `channel`, `status`,
-`due_at`, `initiated_at`, `completed_at`, `transaction_charge_taka`
+`order_id`, `payment_id` (nullable), `amount_taka`, `basis`, `reason`, `channel`,
+`status`, `due_at`, `initiated_at`, `completed_at`, `transaction_charge_taka`
 
 Refunds must go back through **the same channel** the customer paid by, within **10 days**
 of a failed delivery, or **72 hours** in force-majeure cases after a 48-hour notification.
 `due_at` makes the deadline queryable rather than remembered. The seller bears the
 transaction charge, which is why it is recorded separately.
+
+`basis` records *why* a refund was owed — `failed_delivery`, `defective`, `wrong_item`
+(all compelled by regulation) or `change_of_mind` (Butterloom's own policy). The
+distinction matters because return rights differ by payment method: **COD orders carry
+full change-of-mind refunds; bKash and card orders are exchange-only.**
+
+Two consequences follow:
+
+- **A refund's terms come from `orders.return_policy_version`, not from the policy in
+  force today.** Published terms change; what a customer was promised at purchase is what
+  they are owed. Same reasoning as the money snapshot in §5.
+- **"Same channel" has no clean meaning for cash.** A COD customer paid cash to a Courier,
+  so a refund realistically leaves by MFS transfer or bank deposit. `channel` therefore
+  records what was actually used and may legitimately differ from how the order was paid.
+  Worth confirming the acceptable treatment with a local consultant, since the regulatory
+  wording assumes an electronic original.
 
 ### `consignments`
 `order_id`, `courier`, `consignment_ref`, `status`, `delivery_fee_taka`, `cod_fee_taka`,
