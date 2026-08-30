@@ -6,50 +6,59 @@ Conventions: every table has `id`, `created_at`, `updated_at` unless stated. Mon
 `integer` whole taka — no poisha. Locales are `en` (default) and `bn`. Requirements marked
 **[C]** are compliance-driven; see `docs/COMPLIANCE.md` for the source and tier.
 
-Four modelling decisions were taken in review and are settled: bilingual content uses
-per-locale **column pairs**; variants use a **generic option system**; order lines snapshot
-titles in the **order's locale only**; the cart lives in the **browser**.
+Settled in review: the storefront is **English only**, with an optional operator-entered
+alternative product name; variants use a **generic option system**; and the cart lives in
+the **browser**.
 
 ---
 
-## 1. Bilingual content
+## 1. Language
 
-Every translatable field is a **column pair**: `title_en`, `title_bn`.
+**The storefront is English.** There is no localisation layer: no locale column, no
+per-locale tables, no translation fallback, no i18n library.
 
-**Rule: `_en` is required and non-empty; `_bn` is nullable.** Rendering falls back to `_en`
-when the Bangla value is null, so a product can launch before its Bangla copy is written.
-Storing `''` rather than `NULL` for a missing translation defeats the fallback — the
-schema should enforce `CHECK (bn_field IS NULL OR length(trim(bn_field)) > 0)`.
+Operators may enter an **optional alternative name** on a Product (`title_alt`) — typically
+the Bangla name — displayed alongside the English one. It is a single nullable column of
+authored text, not a translation system, and it carries no expectation that anything else
+on the page is translated.
 
-Not translated: SKU, slug, price, stock, phone numbers, and customer-entered text
-(street addresses, order notes) which is stored verbatim in whatever script was typed.
+### Two Bengali requirements survive this, independently **[C]**
 
-**[C]** Terms, and the return/refund/exchange policy, must exist in Bengali. For those
-specific documents `_bn` is *required*, not optional — the fallback rule does not apply.
+Dropping bilingual UI does not drop these, because neither depends on the storefront's
+language:
 
-> Trade-off accepted knowingly: adding a third locale means a migration across every
-> content table. See ADR 0004.
+1. **Terms, and the return/refund/exchange policy, must be written in Bengali.** Other
+   languages are permitted in addition, but Bengali is required. These are two authored
+   documents, not a translated interface.
+2. **Transactional SMS must be in Bengali**, with OTP codes, numbers and URLs left in
+   Latin script — a BTRC directive in force since March 2022, and unrelated to what
+   language the website is in.
+
+Both are hand-authored artefacts: a static policy page and a set of SMS templates. Neither
+needs locale machinery. The consequence for design is narrow but real — **the chosen
+typeface must still carry Bangla coverage**, for those policy pages and for alternative
+product names.
 
 ---
 
 ## 2. Catalog
 
 ### `collections`
-`slug` (unique), `title_en`, `title_bn`, `description_en`, `description_bn`,
-`status` (`draft|active|archived`), `position`
+`slug` (unique), `title`, `description`, `status` (`draft｜active｜archived`), `position`
 
 ### `products`
 | Column | Notes |
 |---|---|
 | `slug` | unique, ASCII, locale-neutral URL identity |
 | `collection_id` | fk nullable |
-| `title_en` / `title_bn` | |
-| `subtitle_en` / `subtitle_bn` | |
-| `description_en` / `description_bn` | |
-| `material_en` / `material_bn` | **[C]** mandatory pre-purchase disclosure |
-| `measurements_en` / `measurements_bn` | **[C]** mandatory |
-| `country_of_origin` | **[C]** mandatory; ISO code, not translated |
-| `care_en` / `care_bn` | |
+| `title` | |
+| `title_alt` | nullable — operator-entered alternative name, typically Bangla |
+| `subtitle` | |
+| `description` | |
+| `material` | **[C]** mandatory pre-purchase disclosure |
+| `measurements` | **[C]** mandatory |
+| `country_of_origin` | **[C]** mandatory; ISO code |
+| `care` | |
 | `status` | `draft｜active｜archived` — never hard-delete an ordered product |
 | `position`, `published_at` | |
 
@@ -70,10 +79,10 @@ products
          variants
 ```
 
-**`product_options`** — `product_id`, `name_en`, `name_bn`, `position`
+**`product_options`** — `product_id`, `name`, `position`
 
-**`product_option_values`** — `option_id`, `value_en`, `value_bn`, `hex` (nullable, for
-colour swatches), `position`
+**`product_option_values`** — `option_id`, `value`, `hex` (nullable, for colour swatches),
+`position`
 
 **`variant_option_values`** — PK (`variant_id`, `option_value_id`)
 
@@ -107,7 +116,7 @@ Available stock, everywhere, is `on_hand - reserved`.
 
 ### `media`
 `product_id`, `variant_id` (nullable — a shot may be specific to one colour), `path`,
-`width`, `height`, `position`, `is_primary`, `alt_en`, `alt_bn`
+`width`, `height`, `position`, `is_primary`, `alt_text`
 
 Alt text is authored content and required, not optional.
 
@@ -140,7 +149,7 @@ counters and a single `delta` cannot express both.
 ## 4. Customers, addresses and consent
 
 ### `customers`
-`phone` (unique, normalised), `name`, `email` (nullable), `default_locale`,
+`phone` (unique, normalised), `name`, `email` (nullable),
 `blocked` (bool), `blocked_reason`, `internal_note`
 
 **Phone is the identity key**, not email. Guest checkout still matches or creates a
@@ -177,7 +186,7 @@ never `DELETE`** — see §8.
 | Column | Notes |
 |---|---|
 | `order_number` | unique, human-quotable, e.g. `BL-26-0042` |
-| `customer_id`, `locale` | the language the order was placed in |
+| `customer_id` | fk |
 | `status` | see `docs/PLAN.md` §4 |
 | `payment_method` | `cod｜bkash｜card` |
 | `subtotal_taka`, `delivery_charge_taka`, `discount_taka`, `total_taka` | int |
@@ -199,16 +208,12 @@ same reason — reprinting an old invoice must reproduce the original tax treatm
 
 ### `order_lines`
 `order_id`, `variant_id` (fk, `ON DELETE SET NULL` — the reference is a convenience, the
-snapshot is the truth), `sku`, `title`, `options_label`, `unit_price_taka`, `quantity`,
-`line_total_taka`
+snapshot is the truth), `sku`, `title`, `title_alt`, `options_label`, `unit_price_taka`,
+`quantity`, `line_total_taka`
 
-`title` and `options_label` are captured **in the order's locale**, per the review
-decision. `options_label` is the flattened option combination (`M · Maroon`) at time of
-order, so a renamed option value cannot alter order history.
-
-> Consequence to design around: a Bangla order shows Bangla titles on operator screens.
-> Packing slips and the admin order list should lead with **SKU**, which is locale-neutral,
-> rather than relying on the title for picking.
+`options_label` is the flattened option combination (`M · Maroon`) at time of order, so a
+renamed option value cannot alter order history. `title_alt` is snapshotted alongside
+`title` because it is displayed to the customer and therefore part of what they bought.
 
 ### `order_events`
 Append-only: `order_id`, `from_status`, `to_status`, `actor_type` (`staff｜system｜customer`),
@@ -275,7 +280,7 @@ and breaches alerted on, rather than discovered.
 
 ### `reviews` **[C]**
 `product_id`, `customer_id`, `order_id` (nullable — verifies purchase), `rating`,
-`body`, `locale`, `status`, `removed_reason`, `removed_by`, `published_at`
+`body`, `status`, `removed_reason`, `removed_by`, `published_at`
 
 **Negative reviews may not be deleted**, and nobody connected to the vendor may post one.
 `status` is therefore deliberately narrow: `published`, or `removed_for_policy` with a
@@ -283,7 +288,7 @@ mandatory reason and actor recorded. There is no `hidden` state and no hard dele
 schema should make suppressing bad feedback visibly auditable rather than convenient.
 
 ### `notifications` **[C]**
-`order_id`, `customer_id`, `channel` (`sms｜email｜call`), `template_key`, `locale`,
+`order_id`, `customer_id`, `channel` (`sms｜email｜call`), `template_key`,
 `to_address`, `body`, `provider`, `provider_ref`, `status`, `sent_at`, `failed_reason`
 
 Customers must be notified when goods are handed to the courier. A log is what proves the

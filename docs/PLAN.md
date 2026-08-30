@@ -37,8 +37,10 @@ add later on the model below; none earns its complexity before the first hundred
 are not — customer-visible reviews are required, and negative reviews may not be deleted.
 So are a complaints workflow with a 72-hour resolution deadline, an invoice record, and a
 delivery SLA timer. See `docs/COMPLIANCE.md`; they are modelled in `docs/DATA-MODEL.md` §6.
-The storefront is **bilingual from the start** (English default, Bengali alongside), which
-is also not optional: the terms and the return policy must exist in Bengali.
+The storefront is **English only** (ADR 0006), with an optional operator-entered
+alternative product name. Note that this does *not* remove two Bengali obligations: the
+terms and return policy must be written in Bengali, and transactional SMS must be Bengali
+with Latin OTP codes and numbers. Both are authored content, needing no i18n layer.
 
 ---
 
@@ -350,10 +352,10 @@ regardless of the eventual look:
 - A type scale and a spacing scale, both as tokens.
 - Semantic colour roles (`surface`, `ink`, `accent`, `danger`, `success`) rather than
   literal names, so a palette swap does not require renaming anything.
-- **Bangla and Latin text must sit together comfortably.** Whatever typeface is chosen
-  needs real Bangla coverage, or a properly paired Bangla face with matched metrics.
-  This constrains the typographic choice more than anything else and should be settled
-  before a typeface is picked, not after.
+- **Bangla coverage is still required**, despite the English-only storefront: the terms
+  and return policy must be published in Bengali, and operators may enter Bangla
+  alternative product names. Either the chosen typeface covers Bangla, or a properly
+  paired Bangla face with matched metrics does. Settle this before picking a typeface.
 - **Photography is the actual design problem.** For a clothing brand, product imagery
   carries more of the visual identity than any typographic decision. The current catalog
   has no images at all. Consistent shot framing, background and colour treatment will do
@@ -452,7 +454,7 @@ non-response can default sensibly rather than block.
 
 | # | Decision | Recommendation |
 |---|---|---|
-| 1 | ~~Storefront language~~ | **Settled: both, English by default.** Content is bilingual throughout; see ADR 0004 for how it is stored. The typeface must carry real Bangla coverage — see §8. |
+| 1 | ~~Storefront language~~ | **Settled: English only** (ADR 0006), with an optional alternative product name operators can enter. The typeface must still carry Bangla coverage — for the mandatory Bengali policy pages and for those alternative names. |
 | 2 | **Delivery charge model** | Flat inside Dhaka, higher outside, free over a threshold. Confirm the actual figures you intend to charge — they belong in configuration, not code. |
 | 3 | **Hosting and database** | A fixed-IP VPS in Singapore with Postgres, unless you would rather trade cost for not operating a server. Interacts with the unresolved bKash IP question. |
 | 4 | ~~VAT treatment~~ | **Settled: display VAT-inclusive, itemise on the invoice.** Charging above the displayed price is an offence (CRPA s.40). The *rate* remains open and must be configurable — it moved 7.5% → 15% → 10% within January 2025; confirm the current figure with a VAT consultant. |

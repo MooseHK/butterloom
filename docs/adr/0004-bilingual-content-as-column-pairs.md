@@ -1,4 +1,14 @@
+---
+status: superseded by ADR-0006
+---
+
 # Store bilingual content as per-locale column pairs
+
+> **Superseded.** The storefront is no longer bilingual; see ADR 0006. This record is kept
+> because the trade-off it weighs is the reason no `_en` / `_bn` columns exist anywhere in
+> the schema, and because a future bilingual requirement should start from this analysis
+> rather than rediscover it.
+
 
 Butterloom ships in English and Bengali, English by default. Translatable fields are
 stored as column pairs on the content table itself — `title_en` / `title_bn` — rather than
