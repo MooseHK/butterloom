@@ -494,10 +494,10 @@ non-response can default sensibly rather than block.
 | # | Decision | Recommendation |
 |---|---|---|
 | 1 | ~~Storefront language~~ | **Settled: English only** (ADR 0006), with an optional alternative product name operators can enter. The typeface must still carry Bangla coverage — for the mandatory Bengali policy pages and for those alternative names. |
-| 2 | **Delivery charge model** | Three bands — inside Dhaka, suburb, outside Dhaka — with free delivery over a threshold. **Proposed figures: Tk 80 / 110 / 130, free over Tk 3,000**, benchmarked against published courier rates and competitor pricing in §15. Confirm or adjust; they live in `delivery_rates`, not code. |
+| 2 | **Delivery charge model** | Three bands — inside Dhaka, suburb, outside Dhaka — with free delivery over a threshold. **Proposed figures: Tk 80 / 110 / 130, free over Tk 3,000**, benchmarked against published courier rates and competitor pricing in §13. Confirm or adjust; they live in `delivery_rates`, not code. |
 | 3 | ~~Hosting and database~~ | **Settled: a single self-managed VPS with Postgres** (ADR 0007); see `docs/DEPLOYMENT.md`. Region still needs measuring from a Dhaka connection — Mumbai is closer on a map but cable routing often favours Singapore. |
 | 4 | ~~VAT treatment~~ | **Settled: display VAT-inclusive, itemise on the invoice.** Charging above the displayed price is an offence (CRPA s.40). The *rate* remains open and must be configurable — it moved 7.5% → 15% → 10% within January 2025; confirm the current figure with a VAT consultant. |
-| 5 | ~~Return and exchange policy~~ | **Settled: exchange only, on every payment method.** Cash refunds only where regulation compels — failed delivery, defective, wrong item — within **10 days** via the same channel paid, plus 48h-notify / 72h-refund for force majeure. Policy **must be published in Bengali**. Proposed terms in §15: 7-day exchange window, customer pays return carriage on size or colour, Butterloom pays on its own error. |
+| 5 | ~~Return and exchange policy~~ | **Settled: exchange only, on every payment method.** Cash refunds only where regulation compels — failed delivery, defective, wrong item — within **10 days** via the same channel paid, plus 48h-notify / 72h-refund for force majeure. Policy **must be published in Bengali**. Proposed terms in §13: 7-day exchange window, customer pays return carriage on size or colour, Butterloom pays on its own error. |
 | 6 | **Anti-refusal measure** | Operator phone confirmation for v1, plus a pre-dispatch courier fraud-check gate (`cod_risk_checks`). Note the legal ceiling: advance payment above **10%** is not permitted for goods not shippable within 48h, so partial-advance is available only for in-stock inventory. |
 | 7 | ~~Guest checkout or accounts~~ | **Settled: guest only**, with order lookup by phone plus order number. A Customer record is still created keyed on phone, so repeat recognition and COD blocking work without anyone signing in. Accounts later need one credentials table. |
 | 8 | ~~Product photography~~ | **Out of scope as a project decision** — how photographs get made is Butterloom's own call. What this project owes is that managing them is easy: drag-and-drop upload with progress, automatic resizing, drag reordering, alt text prompted at upload, in-place replacement, and draft preview at the real product URL before publishing. See §9. |
@@ -505,7 +505,7 @@ non-response can default sensibly rather than block.
 
 ---
 
-## 15. Delivery and returns, benchmarked
+## 13. Delivery and returns, benchmarked
 
 Figures below come from published courier rate cards and competitors' own policy pages
 (sources in the research thread; the primary ones are Pathao's help centre, Steadfast's
@@ -614,7 +614,7 @@ Consistent patterns across every retailer examined:
 
 ---
 
-## 13. Risks
+## 14. Risks
 
 **COD refusal rate.** The defining risk. Every refused order costs two courier legs plus
 tied-up stock, and it is not recoverable in software — only mitigated by confirmation
@@ -639,7 +639,7 @@ the phases above before entertaining any of them.
 
 ---
 
-## 14. Repository changes this plan implies
+## 15. Repository changes this plan implies
 
 - **`src/lib/money.js` is stale.** Written for integer minor units; must become whole
   taka. Do not build on it as-is.
