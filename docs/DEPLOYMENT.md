@@ -126,10 +126,10 @@ which is what `$lib/server` enforces at build time.
 
 **Two distinct things, often conflated, with different retention:**
 
-**Operational backups** — for recovering from failure. Nightly `pg_dump`, plus continuous
-WAL archiving for point-in-time recovery. Retained **30–90 days**. Encrypted, pushed to
-object storage **at a different provider** — a backup on the same provider as the server
-does not survive an account suspension.
+**Operational backups** — for recovering from failure. Periodic physical base backups plus
+continuous WAL archiving provide point-in-time recovery; nightly `pg_dump` is retained
+separately as a logical export. Retain operational backups **30–90 days**, encrypt them, and
+push them to object storage **at a different provider** so an account suspension is survivable.
 
 **The mandated business record** — orders, order lines, payments, invoices, consignments
 and complaints must be retained **six years** (see `docs/COMPLIANCE.md`). This does *not*
