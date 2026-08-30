@@ -369,12 +369,47 @@ regardless of the eventual look:
 
 ## 9. Getting products into the system
 
-An operator must be able to add a product without a developer. This is the workflow that
-decides whether the business can run without you.
+An operator must be able to add a product, photograph it and put it live without a
+developer. This is the workflow that decides whether the business can run without you,
+and it is worth more care than a generic CRUD screen.
 
-v1: admin CRUD for Products, Variants and stock, with image upload. Images resized on
-upload and served in a modern format — an unoptimised phone photo is several megabytes
-and would undo the page-weight advantage that decided ADR 0002.
+**Content is not deployed.** Products, photographs, prices and stock are live data. Adding
+a product or swapping an image takes effect immediately on save — there is no build, no
+release and no waiting. The only thing a deploy carries is code.
+
+### Image handling — the part operators touch most
+
+- **Drag-and-drop, multiple files at once**, with visible per-file progress. Uploads
+  happen over Dhaka mobile connections; a silent upload that may or may not be working is
+  the single most frustrating thing in an admin.
+- **Resilient to flaky connections.** A dropped upload retries or resumes rather than
+  losing the batch and making the operator start again.
+- **Resized and converted on upload**, to a set of derivatives plus a preserved original.
+  An unmodified phone photo is several megabytes and would undo the page-weight advantage
+  that decided ADR 0002. The operator should never have to think about file size, format
+  or dimensions.
+- **Reorder by dragging**, and set which image is primary. Order is merchandising, so it
+  belongs to the operator, not to upload sequence.
+- **Alt text prompted at upload**, not buried in a secondary screen — it is required
+  content **[C]**, and it is only ever written if the interface asks at the moment the
+  image arrives.
+- **Replace an image in place**, keeping its position, so a better shot of the same
+  garment does not mean rebuilding the gallery.
+
+### Preview before publishing
+
+A Product is `draft` until published. A draft is viewable at its real product URL by an
+authenticated operator — **the actual page, not an admin approximation** — so what is
+checked is what customers will see. Publishing is a status change on that same record.
+
+The same applies to edits on a live product: an operator should be able to see a change
+before it is visible to customers. The simplest form that genuinely works is an explicit
+save, with the draft preview available up to that point.
+
+### Everything else
+
+Bulk stock adjustment matters more than it sounds — after a stocktake, correcting twenty
+variants one form at a time is how stock records stop being maintained.
 
 Seed data lives in the repo as a fixture so a fresh environment is immediately useful for
 development and testing.
@@ -464,8 +499,8 @@ non-response can default sensibly rather than block.
 | 4 | ~~VAT treatment~~ | **Settled: display VAT-inclusive, itemise on the invoice.** Charging above the displayed price is an offence (CRPA s.40). The *rate* remains open and must be configurable — it moved 7.5% → 15% → 10% within January 2025; confirm the current figure with a VAT consultant. |
 | 5 | ~~Return and exchange policy~~ | **Settled: exchange only, on every payment method.** Size or colour exchange within a stated window; cash refunds only where regulation compels them — failed delivery, defective, wrong item — within **10 days** via the same channel paid, plus 48h-notify / 72h-refund for force majeure. Policy **must be published in Bengali**. Two sub-items still open: the exchange **window in days**, and **who pays return shipping** — both pending the market research. |
 | 6 | **Anti-refusal measure** | Operator phone confirmation for v1, plus a pre-dispatch courier fraud-check gate (`cod_risk_checks`). Note the legal ceiling: advance payment above **10%** is not permitted for goods not shippable within 48h, so partial-advance is available only for in-stock inventory. |
-| 7 | **Guest checkout only, or customer accounts?** | Guest only, with order lookup by phone plus order number. Accounts add auth surface and password-reset flows for little v1 benefit. |
-| 8 | **Product photography** | The single largest quality lever and entirely outside code. Worth resolving in parallel with Phase 0–1 rather than after. |
+| 7 | ~~Guest checkout or accounts~~ | **Settled: guest only**, with order lookup by phone plus order number. A Customer record is still created keyed on phone, so repeat recognition and COD blocking work without anyone signing in. Accounts later need one credentials table. |
+| 8 | ~~Product photography~~ | **Out of scope as a project decision** — how photographs get made is Butterloom's own call. What this project owes is that managing them is easy: drag-and-drop upload with progress, automatic resizing, drag reordering, alt text prompted at upload, in-place replacement, and draft preview at the real product URL before publishing. See §9. |
 | 9 | **Operator roles** | Who are the two people, and does either need restricting later? Affects nothing now if the role column exists from the start. |
 
 ---
