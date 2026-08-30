@@ -10,15 +10,17 @@ the money and order paths accordingly.
 
 The repository is mid-transition. Read `CONTEXT.md` for the domain glossary and
 `docs/adr/` for decisions already made and why; both are authoritative and this file
-defers to them.
+defers to them. `docs/PLAN.md` is the build plan and sequencing, `docs/DATA-MODEL.md`
+the proposed schema, and `docs/COMPLIANCE.md` the Bangladeshi regulatory obligations
+that shape both — several are load-bearing on the schema, not paperwork.
 
 ## Current state (transition in progress)
 
 - `index.html` — the **legacy** single-file demo storefront. Still the only thing that
   runs. Keep it serving until the replacement is genuinely usable; do not leave the repo
   in a half-migrated state.
-- `src/lib/money.js` — carried forward from the legacy work, currency-agnostic and
-  worth keeping.
+- `src/lib/money.js` — **stale.** Written around integer *minor units*; the project has
+  since settled on whole taka (see Money below). Rewrite it rather than building on it.
 - Everything else is being rebuilt. The vanilla `assets/js/` modules were deleted
   because they encoded assumptions (USD, Stripe, browser-local state) the project has
   since rejected.
@@ -60,10 +62,19 @@ stay for Pages previews to work.)
 
 ## Money
 
-Every monetary amount is an **integer number of minor units**, never a float and never a
-string. Rates are basis points. Amounts become decimal only at the moment they are
-rendered. Currency is BDT. `src/lib/money.js` holds this and asserts integer inputs —
-route new money handling through it rather than doing arithmetic inline.
+Every monetary amount is an **integer number of whole taka**, never a float, never a
+string, and **never a sub-unit — there is no poisha anywhere** in storage, calculation or
+display. Rates are basis points.
+
+Two rules that are easy to get wrong and expensive to fix:
+
+- **Round once, at the order level, not per line.** Line totals are exact (`unit price x
+  quantity`, both integers). Percentages apply to the subtotal and round once. Rounding
+  each line independently makes displayed lines fail to sum to the displayed total.
+- **Every amount on an Order is a snapshot written once at placement** — unit prices, VAT
+  rate, delivery charge, total. Never recomputed from live catalog data. A price change
+  tomorrow must not alter what yesterday's customer owes. Charging anything other than
+  the displayed price is also an offence under Consumer Rights Protection Act s.40.
 
 ## Domain language
 
@@ -72,11 +83,26 @@ Use the terms in `CONTEXT.md` exactly, in code and in conversation. In particula
 not an Order — and a **Delivery Area** is a courier city/zone/area triple, not a typed
 address.
 
+## Language
+
+The storefront is **English only** (ADR 0006). There is no i18n layer, no locale column
+and no translation fallback. A Product carries one optional operator-entered alternative
+name (`title_alt`), typically Bangla.
+
+Two Bengali obligations survive this and are unaffected by it: the **terms and
+return/refund policy must be written in Bengali**, and **transactional SMS must be
+Bengali** with OTP codes, numbers and URLs left in Latin script. Both are authored
+artefacts, not an interface concern.
+
 ## Design system
 
 Undecided. No logo, typeface or token spec exists yet. Route styling through custom
 properties so a real design system can land by redefining tokens rather than by editing
 components.
+
+The one constraint already fixed: **the typeface must carry Bangla coverage**, or be
+paired with a Bangla face with matched metrics — required for the Bengali policy pages
+and for alternative product names, despite the English-only storefront.
 
 ## Working style
 
