@@ -8,10 +8,19 @@ Postgres.
 
 Three project-specific reasons outweigh the convenience:
 
-**A stable outbound IP.** ADR 0003 leaves open whether bKash allowlists merchant IPs on
-production credentials. If they do, a rotating-IP serverless platform is disqualified from
-the payment integration — and that would be discovered late, after the deployment shape
-was settled. A fixed IP removes the risk rather than betting on the answer.
+**A stable outbound IP — hedging an unverified risk, not satisfying a known requirement.**
+ADR 0003 leaves open whether bKash allowlists merchant IPs on production credentials. A
+later review found no authoritative bKash documentation requiring it; the IP-allowlist
+references that do exist concern verifying *inbound* IPN source addresses, not allowlisting
+a merchant's outbound one. So this is a cheap hedge against a risk that may not exist,
+and it should not be read as the decisive reason. **Confirm with bKash onboarding**; if
+they do not allowlist, this argument falls away entirely and the managed-platform option
+below becomes materially more attractive.
+
+**A single owner for the bKash token.** The Grant Token API is capped at two calls per
+hour, so the token must be cached in storage shared across every worker. Whichever runtime
+owns bKash must own it *exclusively* — two independent caches racing that limit would lock
+the merchant out of their own gateway. One server makes that trivially true.
 
 **Transactional stock control.** Overselling is prevented by row-level locking during
 order placement. Postgres on the same host, reached over a local socket, keeps that path
