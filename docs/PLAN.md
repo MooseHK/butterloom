@@ -6,8 +6,9 @@ This plan covers what to build, in what order, and which decisions are still ope
 It assumes the decisions already recorded in `docs/adr/` and the vocabulary in
 `CONTEXT.md`. Where this document and an ADR disagree, the ADR wins.
 
-Companion documents: `docs/DATA-MODEL.md` (the schema) and `docs/COMPLIANCE.md` (the
-regulatory obligations that shape it — several are load-bearing, not paperwork).
+Companion documents: `docs/DATA-MODEL.md` (the schema), `docs/COMPLIANCE.md` (the
+regulatory obligations that shape it — several are load-bearing, not paperwork) and
+`docs/DEPLOYMENT.md` (how it runs in production).
 
 ---
 
@@ -273,17 +274,18 @@ backup is not a backup, and the entire order history is the business.
 
 ### Hosting
 
-The app needs a server runtime. Considerations specific to this project:
+**Settled: a single self-managed VPS with a fixed IP, running the app, Postgres and a
+reverse proxy** — ADR 0007, with the full topology, deploy pipeline, migration discipline,
+backup strategy and server baseline in `docs/DEPLOYMENT.md`.
 
-- **Latency to Dhaka.** Singapore or Mumbai regions are meaningfully closer than US or
-  EU. This matters more than raw server specs at this scale.
-- **A stable outbound IP may become mandatory.** ADR 0003 flags an unresolved question
-  about whether bKash allowlists merchant IPs on production credentials. If they do,
-  rotating-IP serverless platforms are disqualified for that integration. **Confirm this
-  with bKash before committing to a host** — it is cheap to ask now and expensive to
-  discover after building.
-- A small VPS with a fixed IP sidesteps the risk entirely and is inexpensive; the cost
-  is that patching and uptime become yours.
+The fixed IP is the load-bearing part rather than the cost saving: ADR 0003 leaves open
+whether bKash allowlists merchant IPs on production credentials, and a fixed address
+removes that risk instead of betting on the answer.
+
+One sub-decision remains open — **the region**. Mumbai is geographically closer to Dhaka
+than Singapore, but Bangladeshi international traffic routes over submarine cables that
+often favour Singapore. Measure both from an actual Dhaka connection rather than choosing
+from a map.
 
 ### Staff access
 
@@ -432,9 +434,11 @@ stock adjustment with movements, audit log.
 mark delivered — without touching the database.
 
 ### Phase 4 — Launch readiness
-Backups with a tested restore, error monitoring, rate limiting, the legal and content
-pages, performance pass on real mid-range Android, and retiring `index.html`.
-**Done when:** losing the server would cost no orders, and the legacy demo is gone.
+Backups with a tested restore, the provisioning script, error monitoring and alerting,
+rate limiting, the legal and content pages, performance pass on real mid-range Android,
+and retiring `index.html`. See `docs/DEPLOYMENT.md` §7 and §10.
+**Done when:** losing the server would cost no orders — proven by an actual restore, not
+by a backup job exiting zero — and the legacy demo is gone.
 
 ### Phase 5 — Integrations
 Pathao adapter behind the existing courier port; then bKash behind the payment port,
@@ -456,7 +460,7 @@ non-response can default sensibly rather than block.
 |---|---|---|
 | 1 | ~~Storefront language~~ | **Settled: English only** (ADR 0006), with an optional alternative product name operators can enter. The typeface must still carry Bangla coverage — for the mandatory Bengali policy pages and for those alternative names. |
 | 2 | **Delivery charge model** | Flat inside Dhaka, higher outside, free over a threshold. Confirm the actual figures you intend to charge — they belong in configuration, not code. |
-| 3 | **Hosting and database** | A fixed-IP VPS in Singapore with Postgres, unless you would rather trade cost for not operating a server. Interacts with the unresolved bKash IP question. |
+| 3 | ~~Hosting and database~~ | **Settled: a single self-managed VPS with Postgres** (ADR 0007); see `docs/DEPLOYMENT.md`. Region still needs measuring from a Dhaka connection — Mumbai is closer on a map but cable routing often favours Singapore. |
 | 4 | ~~VAT treatment~~ | **Settled: display VAT-inclusive, itemise on the invoice.** Charging above the displayed price is an offence (CRPA s.40). The *rate* remains open and must be configurable — it moved 7.5% → 15% → 10% within January 2025; confirm the current figure with a VAT consultant. |
 | 5 | **Return and exchange policy** | Regulation sets the floor: refunds within **10 days** of failed delivery via the same channel paid, and a 48h-notify / 72h-refund path for force majeure. Your own policy sits on top and **must be published in Bengali**. Still need your commercial terms — change-of-mind window, who pays return shipping. |
 | 6 | **Anti-refusal measure** | Operator phone confirmation for v1, plus a pre-dispatch courier fraud-check gate (`cod_risk_checks`). Note the legal ceiling: advance payment above **10%** is not permitted for goods not shippable within 48h, so partial-advance is available only for in-stock inventory. |
