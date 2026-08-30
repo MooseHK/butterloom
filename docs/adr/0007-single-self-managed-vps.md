@@ -23,8 +23,8 @@ owns bKash must own it *exclusively* — two independent caches racing that limi
 the merchant out of their own gateway. One server makes that trivially true.
 
 **Transactional stock control.** Overselling is prevented by row-level locking during
-order placement. Postgres on the same host, reached over a local socket, keeps that path
-short and predictable, with no connection-pooler behaviour between the app and its locks.
+order placement. Postgres on the same host, reached over the private Docker network, keeps
+that path short and predictable, with no connection-pooler behaviour between the app and its locks.
 
 **Cost proportionality.** Under $40 a month against roughly $50–100 for platform plus
 managed database at equivalent capacity. Not decisive on its own, but it compounds for a
