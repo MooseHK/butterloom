@@ -38,8 +38,8 @@ _Avoid_: postcode, zip, region, location
 
 **Consignment**:
 The Courier's identifier for a parcel once an Order has been handed over to
-them. One Order becomes one Consignment; the two are tracked separately because
-an Order can exist long before, and outlive, its Consignment.
+them. An Order may produce multiple Consignments across failed attempts, but only one
+may be active at a time; an Order can exist before, and outlive, any Consignment.
 _Avoid_: tracking number, shipment, parcel ID
 
 **Amount to Collect**:
