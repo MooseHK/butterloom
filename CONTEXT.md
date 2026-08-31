@@ -51,8 +51,9 @@ signal only; not revenue.
 
 **Remitted**:
 The Settlement State in which money has reached a Butterloom bank account, net of
-whatever fees the collecting party deducted. **Revenue is recognised here and
-nowhere else.**
+whatever fees the collecting party deducted. A cash-settlement event, not a
+revenue-recognition event; sales are recognised when goods are delivered, subject
+to the applicable accounting policy. Remittances and fees are tracked separately.
 _Avoid_: paid, settled, received
 
 **RTO**:
