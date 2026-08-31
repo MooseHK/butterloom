@@ -31,7 +31,9 @@ single daily CSV batch into Pathao's merchant panel.
 
 It is built as a SvelteKit and PostgreSQL application — server-rendered, working
 before hydration, chosen because browsing is the product on a fashion storefront
-and the customers are on mobile data. It runs on a managed platform in Singapore
+and the customers are on mobile data. A slow, metered connection in Dhaka is the
+design target rather than the edge case, under a page-weight budget that binds
+the storefront. It runs on a managed platform in Singapore
 whose database backups and restores are not ours to run. Cash on Delivery orders
 are gated by an SMS OTP, because refused parcels are the largest cost after
 goods; a Manual bKash order holds its stock for 90 minutes while the customer
