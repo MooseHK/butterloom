@@ -15,9 +15,9 @@ reaches our bank.
 _Avoid_: payment method, payment gateway (a gateway is one implementation of a tier)
 
 **Merchant Approval**:
-A commercial agreement a payment provider must grant Butterloom before we may
-accept money through them. It is granted or withheld by the provider, cannot be
-engineered around, and is unrelated to whether we wrote the integration code.
+A commercial gateway or aggregator agreement a provider must grant Butterloom
+before we may accept money through its integration. It is granted or withheld by
+the provider, cannot be engineered around, and is distinct from the lighter Merchant Account approval required for Manual bKash.
 _Avoid_: integration approval, API access
 
 **Manual bKash**:
