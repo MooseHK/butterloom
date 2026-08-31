@@ -10,7 +10,8 @@ take longer than the build.
 | **bKash Merchant Account** | Manual bKash tier | A till number, not a gateway agreement, so a much lighter approval than PGW. Running business volume through a personal wallet instead risks the number being frozen. |
 | **Trade licence, TIN, company bank account, NID** | DBID, Merchant Account, and every later gateway | The common KYC set. Assemble once. |
 | **Pathao merchant account** | Dispatch | Needed for the merchant panel and its bulk upload. Verified business address required for pickup. |
-| **SMS sender ID** | Order and dispatch notifications | Masked sender IDs need provider approval with real lead time. Unmasked SMS works as a fallback and is not a launch blocker. |
+| **SMS delivery account** | Cash on Delivery checkout, order and dispatch notifications | A launch blocker since ADR-0008 put an OTP in front of every Cash on Delivery order — without working SMS, that tier cannot take orders. The *masked sender ID* is the part that needs provider approval with real lead time; unmasked SMS works as a fallback and is not itself a blocker. |
+| **Card endorsed for international payment** | Paying the host every month | Foreign-currency billing from Bangladesh needs a card actually endorsed for it (ADR-0006). A declined renewal takes the site down. Arrange a second one as a standby. |
 | **Product photography** | The storefront existing | Not an approval, but reliably the true critical path for a fashion catalogue. Shooting and retouching outlast the build. |
 | **Published policies** — returns, refunds, terms, privacy, contact | Trading, and later gateway approval | Gateways inspect the live site before approving. |
 
