@@ -76,8 +76,8 @@ succeeds or fails as.
 _Avoid_: shipment batch, daily orders
 
 **Reservation**:
-Stock held against an unpaid or unverified order so it cannot be sold twice,
-expiring automatically if payment is never verified.
+Stock held against an unverified Manual bKash order so it cannot be sold twice,
+expiring automatically if payment is not verified within the configured window.
 _Avoid_: hold, allocation, lock
 
 ### Payment (continued)
