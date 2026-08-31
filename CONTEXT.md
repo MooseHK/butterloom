@@ -60,3 +60,31 @@ An order the customer refused or could not be handed at the door, returned to
 Butterloom. Fulfilment State returned, Settlement State written off, and the
 return freight is a cost we bear.
 _Avoid_: return, failed delivery, cancellation (a cancellation happens before dispatch)
+
+### Fulfilment
+
+**Consignment**:
+A parcel handed to the courier for delivery, identified by the courier's own
+tracking number. One Order becomes one Consignment; the two are distinct because
+a Consignment can be returned, lost or re-attempted without the Order changing.
+_Avoid_: shipment, parcel, delivery
+
+**Dispatch Batch**:
+The set of orders released to the courier together in a single daily run. The
+unit in which Butterloom hands over goods, and the unit a courier upload
+succeeds or fails as.
+_Avoid_: shipment batch, daily orders
+
+**Reservation**:
+Stock held against an unpaid or unverified order so it cannot be sold twice,
+expiring automatically if payment is never verified.
+_Avoid_: hold, allocation, lock
+
+### Payment (continued)
+
+**Merchant Account**:
+A bKash account authorised to receive business payments, identified by a till
+number. Distinct from and much lighter than the Merchant Approval required for a
+payment gateway, but still granted by bKash rather than assumed. Manual bKash
+depends on one.
+_Avoid_: merchant number, business account, till

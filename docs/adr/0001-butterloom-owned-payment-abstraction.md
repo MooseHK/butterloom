@@ -18,3 +18,17 @@ two as margin-and-UX upgrades that land whenever approval arrives.
 - We carry the cost of a tier that stock WooCommerce has no concept of: Manual
   bKash needs TrxID capture, duplicate-TrxID rejection, and a staff
   reconciliation queue.
+
+## Correction (recorded during the same design session)
+
+This ADR originally stated that Cash on Delivery and Manual bKash "neither need
+anyone's approval". That is true of Cash on Delivery and wrong of Manual bKash.
+Receiving business volume on a personal bKash wallet breaches bKash's terms and
+risks the number being frozen, which would take the tier offline without notice.
+Manual bKash therefore depends on a bKash Merchant Account — a far lighter
+approval than the gateway Merchant Approval, but an approval nonetheless, and one
+to start early.
+
+The decision itself is unaffected: the tiers still differ sharply in how much
+approval they need, and the two launch tiers still clear a far lower bar than
+bKash PGW or an aggregator.
