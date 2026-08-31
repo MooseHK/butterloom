@@ -13,8 +13,8 @@ is being carried forward.
   Settlement State, RTO, Consignment and the rest. Start here.
 - **[docs/adr/](./docs/adr/)** — decisions that are settled, and why.
 - **[docs/open-decisions.md](./docs/open-decisions.md)** — decisions deliberately
-  still open, each with the recommendation on the table. Two remain, and neither
-  blocks starting the build.
+  still open, each with the recommendation on the table. Three remain, and none
+  of them blocks starting the build.
 - **[docs/launch-prerequisites.md](./docs/launch-prerequisites.md)** — external
   registrations and approvals with lead times we do not control. Several take
   longer than the build; they can all start now.
@@ -29,11 +29,13 @@ independent axes, one for where the goods are and one for where the money is, so
 that cash a courier is still holding is never counted as revenue. Dispatch is a
 single daily CSV batch into Pathao's merchant panel.
 
-It is built as a Django and PostgreSQL application, server-rendered with htmx and
-no single-page application, on a managed platform in Singapore whose database
-backups and restores are not ours to run. Cash on Delivery orders are gated by an
-SMS OTP, because refused parcels are the largest cost after goods; a Manual bKash
-order holds its stock for 90 minutes while the customer pays.
+It is built as a SvelteKit and PostgreSQL application — server-rendered, working
+before hydration, chosen because browsing is the product on a fashion storefront
+and the customers are on mobile data. It runs on a managed platform in Singapore
+whose database backups and restores are not ours to run. Cash on Delivery orders
+are gated by an SMS OTP, because refused parcels are the largest cost after
+goods; a Manual bKash order holds its stock for 90 minutes while the customer
+pays.
 
 ## Running the old prototype
 

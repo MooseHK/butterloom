@@ -38,9 +38,11 @@ ADR-0005 would cost a rewrite.
   sending domain. Mail sent directly from the instance is filtered, and an order
   confirmation that silently fails to arrive reads to the customer as a failed
   order.
-- No staging environment initially. At this volume the honest arrangement is one
-  production environment plus a local development database restored from a
-  recent backup; a staging tier that is never kept current is worse than not
-  having one.
+- No staging environment initially — not because the volume is low, which is not
+  what decides it, but because a staging tier nobody keeps current is worse than
+  none: it grows its own schema and its own bugs and then certifies releases
+  against neither production's data nor its own. The arrangement is one
+  production environment plus a local development database restored from a recent
+  backup, which is also how the restore gets rehearsed.
 - Nothing here depends on the provider's proprietary services. Managed Postgres,
   object storage and a container are the portable subset on purpose.
