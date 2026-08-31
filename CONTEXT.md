@@ -57,8 +57,8 @@ _Avoid_: paid, settled, received
 
 **RTO**:
 An order the customer refused or could not be handed at the door, returned to
-Butterloom. Fulfilment State returned, Settlement State written off, and the
-return freight is a cost we bear.
+Butterloom. Fulfilment State returned; COD settlement is written off, while prepaid
+settlement follows the refund policy. The return freight is a cost we bear.
 _Avoid_: return, failed delivery, cancellation (a cancellation happens before dispatch)
 
 ### Fulfilment
