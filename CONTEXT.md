@@ -133,6 +133,15 @@ somewhere in the part of the catalogue being listed. Scope, not selection: the
 values do not narrow as filters are applied, and none of them carries a count.
 _Avoid_: filter (a filter is what a customer picks from a facet), refinement
 
+**Search**:
+A scope over the catalogue formed from words a customer typed, which Facets then
+refine within — the same shape as a Category, not a mode of its own. A Product
+matches when every word appears somewhere in its title or its description; it
+reads nothing else, and it says nothing about stock. The scope has its own
+address, so a search a customer narrows by colour is still one page they can
+send to somebody.
+_Avoid_: query, keyword search, filter (a filter narrows a search, it is not one)
+
 **Recently Viewed**: The last few Products whose pages a visitor has opened, held
 in that visitor's own browser and never on the server. Products, not Variants —
 a visitor opens a page, not a configuration.

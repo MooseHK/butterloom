@@ -18,6 +18,13 @@ export function StorefrontLayout(
     description?: string
     canonicalPath: string
     cartCount?: number
+    /**
+     * Set on a search result page: every distinct `?q=` a shopper can type is
+     * a junk URL for a crawler to index, and Google documents exactly that.
+     * `follow`, not `nofollow` — the products linked from the page are worth
+     * crawling even though the search URL itself is not worth indexing.
+     */
+    noindex?: boolean
   }>,
 ) {
   return (
@@ -47,6 +54,7 @@ export function StorefrontLayout(
           <meta name="theme-color" content="#201e1b" media="(prefers-color-scheme: dark)" />
           <title>{props.title}</title>
           {props.description ? <meta name="description" content={props.description} /> : null}
+          {props.noindex ? <meta name="robots" content="noindex,follow" /> : null}
           <link rel="canonical" href={props.canonicalPath} />
           {/*
             <style> is a raw-text element: the browser does not decode character
@@ -84,7 +92,26 @@ export function StorefrontLayout(
             Dispatched daily
           </div>
           <header class="site">
-            <div class="header-left" />
+            <div class="header-left">
+              {/* The one route into search from every page including /p/:slug,
+                  which carries no search box of its own. */}
+              <a class="search-btn" href="/search" aria-label="Search">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </a>
+            </div>
             <a class="wm" href="/">
               <i class="dot" />
               <b>Butterloom</b>
@@ -266,7 +293,9 @@ const css = `
     background: var(--paper); border-bottom: 1px solid var(--hairline); }
   .header-left, .header-right { width: 44px; }
   .header-right { display: flex; justify-content: flex-end; }
-  .cart-btn { position: relative; display: flex; align-items: center;
+  /* One shape, two doors: search on the left balances cart on the right, same
+     44px tap target and the same stroke weight as the icon beside it. */
+  .cart-btn, .search-btn { position: relative; display: flex; align-items: center;
     justify-content: center; width: 44px; height: 44px; color: var(--ink); }
   .cart-badge { position: absolute; top: 4px; right: 1px; display: flex;
     align-items: center; justify-content: center; min-width: 16px; height: 16px;
@@ -301,6 +330,17 @@ const css = `
   .crumbs a { display: flex; align-items: center; min-height: 44px; }
   .crumbs b { font-weight: 400; color: var(--secondary); }
   .muted { margin: 0; color: var(--tertiary); font-size: 13px; }
+
+  /* The one form the whole feature is: a GET request to /search, so the input
+     takes whatever width the button leaves it rather than a fixed measure. */
+  .search { display: flex; gap: 10px; padding: 22px 0 0; }
+  .search input { flex: 1; min-width: 0; min-height: 48px; padding: 0 14px;
+    border: 1px solid var(--hairline); border-radius: 2px;
+    background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; }
+  .search input::placeholder { color: var(--tertiary); opacity: 1; }
+  /* Narrower than the full-measure .btn elsewhere: this one sits beside a
+     field rather than closing a page, and 48px keeps it level with the input. */
+  .search .btn { width: auto; min-height: 48px; padding: 0 20px; }
 
   /* Grid paper, 28px pitch: the only gradient on the storefront. */
   .brand, footer.site { display: flex; flex-direction: column; align-items: center;

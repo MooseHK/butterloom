@@ -127,6 +127,41 @@ function matchesFilters(filters: OptionFilter[]) {
 }
 
 /**
+ * The predicate a search term applies, shared by listProducts and facetsFor so
+ * a result page and the facets it offers are always scoped to the same rows —
+ * per CONTEXT.md, Search is the same shape as a Category, and a Category's
+ * facets never come from outside the shelf being looked at either.
+ *
+ * Every term has to appear somewhere in the title or the description, in any
+ * order — "indigo saree" and "saree indigo" match the same rows, and a title
+ * that has one word without the other matches neither. Capped at six terms for
+ * the same reason listing.ts caps `q` itself at eighty characters: an
+ * unbounded number of LIKE clauses is an unbounded amount of work per request,
+ * and eighty characters of English words does not need more than six of them.
+ *
+ * `%` and `_` are LIKE wildcards, not literal characters, so each term is
+ * escaped by hand and matched with an ESCAPE clause before it is wrapped in
+ * the wildcards this query adds itself — without that, a shopper who types a
+ * stray `%` matches every row in the catalogue instead of none. SQLite's LIKE
+ * is case-insensitive for ASCII only, which is what the catalogue's English
+ * titles are, so nothing here needs a COLLATE of its own; FTS5 is the upgrade
+ * path the day a table scan stops being fast enough, not before — it wants
+ * triggers kept in sync with every write, which a catalogue of a few hundred
+ * rows does not earn yet.
+ */
+function matchesSearch(q: string | undefined) {
+  const terms = (q ?? '').split(/\s+/).filter(Boolean).slice(0, 6)
+  if (terms.length === 0) return undefined
+  return and(
+    ...terms.map((term) => {
+      const escaped = term.replace(/[\\%_]/g, (ch) => `\\${ch}`)
+      const pattern = `%${escaped}%`
+      return sql`(${products.title} like ${pattern} escape '\\' or ${products.description} like ${pattern} escape '\\')`
+    }),
+  )
+}
+
+/**
  * Every sort ends in a unique column. Without that tiebreaker two products of
  * the same price sort in whatever order SQLite happens to produce, which is
  * stable within one query and not across two — so page two could repeat a
@@ -158,12 +193,15 @@ export function listProducts(options: {
   params?: ListingParams
   /** The front page wants a short rail of the newest, not a page of results. */
   limit?: number
+  /** The search box's term, scoping the listing the same way categoryId does. */
+  q?: string
 } = {}): ListingPage {
   const params = options.params ?? emptyParams
   const categoryId = options.categoryId ?? null
   const where = and(
     categoryId === null ? undefined : eq(products.categoryId, categoryId),
     matchesFilters(params.filters),
+    matchesSearch(options.q),
   )
 
   const [tally] = db.select({ n: count() }).from(products).where(where).all()
@@ -261,17 +299,22 @@ export interface Facet {
  * M, L — which is both what the filter form offers and the whitelist a URL is
  * validated against.
  *
- * Scope, not selection: these are the values present in the category being
- * listed, and they do not narrow as filters are applied. A count beside each
- * one would have to be recomputed per axis against the *other* axes' filters to
- * be true, so rather than show a number that is subtly wrong, this shows none.
+ * Scope, not selection: these are the values present in the scope being
+ * listed — a category, a search, or both together — and they do not narrow as
+ * filters are applied. A count beside each one would have to be recomputed per
+ * axis against the *other* axes' filters to be true, so rather than show a
+ * number that is subtly wrong, this shows none.
+ *
+ * The search term is part of that scope for the same reason a category is:
+ * offering "Colour: Ecru" on a page of nothing but indigo results would hand a
+ * shopper a filter that leads straight to an empty page.
  *
  * ponytail: values are ordered by when they were first entered, which puts S, M,
  * L in size order for an operator who types them in that order and is wrong for
  * one who does not. A real ordering is a position column on a value the day
  * anybody minds.
  */
-export function facetsFor(categoryId: number | null): Facet[] {
+export function facetsFor(categoryId: number | null, options: { q?: string } = {}): Facet[] {
   const rows = db
     .select({
       name: sql<string>`min(${variantOptions.name})`,
@@ -284,7 +327,12 @@ export function facetsFor(categoryId: number | null): Facet[] {
     .from(variantOptions)
     .innerJoin(productVariants, eq(productVariants.id, variantOptions.variantId))
     .innerJoin(products, eq(products.id, productVariants.productId))
-    .where(categoryId === null ? undefined : eq(products.categoryId, categoryId))
+    .where(
+      and(
+        categoryId === null ? undefined : eq(products.categoryId, categoryId),
+        matchesSearch(options.q),
+      ),
+    )
     .groupBy(variantOptions.nameSlug, variantOptions.valueSlug)
     .all()
 

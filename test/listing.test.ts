@@ -6,6 +6,7 @@ import {
   listingSearch,
   parseListingParams,
   toggleValue,
+  withPage,
   withSort,
 } from '../src/storefront/listing.js'
 import type { Allowed, RawQuery } from '../src/storefront/listing.js'
@@ -109,4 +110,41 @@ test('the canonical string parses back to itself, so the redirect cannot loop', 
     parseListingParams(Object.fromEntries(new URLSearchParams(once)), allowed),
   )
   assert.equal(again, once)
+})
+
+/**
+ * `q` gets the same treatment as every other parameter this file validates: a
+ * hand-edited or copy-pasted search box is where whitespace runs and absurd
+ * lengths actually come from, and each one left unbounded is a fresh CDN
+ * cache entry for a page that reads identically to one already cached.
+ */
+test('q is trimmed, its internal whitespace collapsed, and capped at 80 characters', () => {
+  assert.equal(parseListingParams({ q: '  indigo   saree  ' }, allowed).q, 'indigo saree')
+  assert.equal(parseListingParams({ q: '' }, allowed).q, '')
+  assert.equal(parseListingParams({}, allowed).q, '')
+
+  const long = 'a'.repeat(200)
+  assert.equal(parseListingParams({ q: long }, allowed).q.length, 80)
+  assert.equal(parseListingParams({ q: long }, allowed).q, 'a'.repeat(80))
+})
+
+test('q survives withPage, withSort and toggleValue', () => {
+  const searched = parseListingParams({ q: 'saree' }, allowed)
+  assert.equal(withPage(searched, 3).q, 'saree')
+  assert.equal(withSort(searched, 'price-asc').q, 'saree')
+  assert.equal(toggleValue(searched, 'colour', 'indigo').q, 'saree')
+})
+
+test('listingSearch puts q first and omits it entirely when empty', () => {
+  assert.equal(canonical({ q: 'indigo saree', colour: 'indigo' }), '?q=indigo+saree&colour=indigo')
+  assert.equal(canonical({ q: '', colour: 'indigo' }), '?colour=indigo')
+  assert.equal(canonical({ colour: 'indigo' }), '?colour=indigo')
+})
+
+test('a variant axis literally named q cannot be parsed as a filter — it is reserved', () => {
+  const qAsAxis: typeof allowed = new Map([...allowed, ['q', new Set(['odd-value'])]])
+  const params = parseListingParams({ q: 'odd-value' }, qAsAxis)
+  // Read as the search term, never as a filter on a same-named axis.
+  assert.equal(params.q, 'odd-value')
+  assert.deepEqual(params.filters, [])
 })

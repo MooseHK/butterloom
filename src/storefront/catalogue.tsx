@@ -16,11 +16,14 @@ import {
 } from './queries.js'
 import type { Facet, ImageWithDerivatives, ProductListing } from './queries.js'
 import {
+  emptyParams,
   hasValue,
   isFiltered,
+  isSearching,
   listingHref,
   listingSearch,
   parseListingParams,
+  parseQuery,
   sortLabels,
   sorts,
   toggleValue,
@@ -133,6 +136,15 @@ storefront.get('/', (c) => {
 
 storefront.get('/shop', (c) => listing(c, '/shop', null))
 
+/**
+ * `q` is parsed by listing() itself, the same as it would be off `/shop` or
+ * `/c/:slug` — this route exists to give search a memorable address and a
+ * heading of its own, not because the term is handled any differently once
+ * it arrives. A shopper who searches, then filters to Colour: Indigo, is
+ * still on this one function.
+ */
+storefront.get('/search', (c) => listing(c, '/search', null))
+
 storefront.get('/c/:slug', (c) => {
   const category = findCategoryBySlug(c.req.param('slug'))
   if (!category) return c.notFound()
@@ -149,9 +161,12 @@ storefront.get('/c/:slug', (c) => {
  */
 function listing(c: Context, basePath: string, category: Category | null) {
   const scopeId = category?.id ?? null
-  const facets = facetsFor(scopeId)
+  // Read before the facet whitelist is built, so a search's facets are scoped
+  // to its results rather than to the whole catalogue — see facetsFor.
+  const q = parseQuery(c.req.queries())
+  const facets = facetsFor(scopeId, { q })
   const requested = parseListingParams(c.req.queries(), allowedFrom(facets))
-  const results = listProducts({ categoryId: scopeId, params: requested })
+  const results = listProducts({ categoryId: scopeId, params: requested, q: requested.q })
   // parseListingParams cannot clamp the page — it has counted nothing — so page
   // nine of a three-page shelf becomes page three here. Folding the clamp into
   // the canonical URL rather than only into the query is what makes those two
@@ -161,17 +176,42 @@ function listing(c: Context, basePath: string, category: Category | null) {
 
   // Every distinct query string is a distinct entry in the CDN's cache, so this
   // listing gets exactly one URL and everything else is sent to it: ?sort=newest,
-  // ?page=1, re-ordered filters, junk parameters. The target parses back to
-  // these same params, which is what keeps this off a redirect loop.
+  // ?page=1, re-ordered filters, junk parameters, `?q=` however a shopper's
+  // browser padded it with whitespace. The target parses back to these same
+  // params, which is what keeps this off a redirect loop.
   if (new URL(c.req.url).search !== search) return c.redirect(basePath + search, 301)
 
-  const heading = category ? category.name : 'All items'
+  const searching = basePath === '/search'
   const filtered = isFiltered(params)
   const applied = params.filters.reduce((n, f) => n + f.valueSlugs.length, 0)
+  // /shop and /c/:slug keep their own heading regardless of a `?q=` a shopper
+  // could still hand-add to either — only /search's own address speaks about
+  // the search itself.
+  const heading = searching
+    ? isSearching(params)
+      ? `Results for “${params.q}”`
+      : 'Search'
+    : category
+      ? category.name
+      : 'All items'
+  // A search result is a page nobody should be sent to from a search engine —
+  // every distinct `?q=` a visitor can type is a junk URL in Google's index,
+  // and Google says so outright. `follow`, not `nofollow`: the products linked
+  // from it are exactly as worth crawling as ever.
+  const noindex = searching && isSearching(params)
+  // The bare /search landing has nothing to list yet, so it offers a way in
+  // rather than an empty grid — the same tiles the front page draws.
+  const landing = searching && !isSearching(params)
+  const shelves = landing ? listCategories().filter((shelf) => shelf.productCount > 0) : []
 
   return c.html(
-    <StorefrontLayout title={`${heading} — butterloom`} canonicalPath={basePath + search}>
+    <StorefrontLayout
+      title={`${heading} — butterloom`}
+      canonicalPath={basePath + search}
+      noindex={noindex}
+    >
       <main>
+        <SearchForm q={params.q} />
         <div class="head">
           {category ? (
             <nav class="crumbs" aria-label="Breadcrumb">
@@ -181,137 +221,195 @@ function listing(c: Context, basePath: string, category: Category | null) {
             </nav>
           ) : null}
           <h1>{heading}</h1>
-          <span>{pieces(results.total)}</span>
+          {landing ? null : <span>{pieces(results.total)}</span>}
         </div>
 
-        {results.total > 0 || filtered ? (
-          <details class="controls">
-            <summary>{applied > 0 ? `Filter and sort (${applied})` : 'Filter and sort'}</summary>
-            {/*
-              No page input: applying always lands on page one, because page four
-              of an unfiltered listing is rarely page four of a filtered one.
-            */}
-            <form method="get" action={basePath}>
-              <div>
-                <label class="label" for="sort">
-                  Sort
-                </label>
-                <select id="sort" name="sort">
-                  {sorts.map((sort) => (
-                    <option value={sort} selected={sort === params.sort}>
-                      {sortLabels[sort]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {/*
-                The axes offered are the ones present in this scope, and they do
-                not narrow to what is in stock: ADR-0007 keeps availability out
-                of cached HTML, and a filter that hid sold-out variants would be
-                exactly the stale assertion that promise exists to prevent.
-              */}
-              {facets.map((facet) => (
-                <fieldset>
-                  <legend>{facet.name}</legend>
-                  <div class="values">
-                    {facet.values.map((value) => (
-                      <label for={`${facet.nameSlug}-${value.valueSlug}`}>
-                        <input
-                          type="checkbox"
-                          id={`${facet.nameSlug}-${value.valueSlug}`}
-                          name={facet.nameSlug}
-                          value={value.valueSlug}
-                          checked={hasValue(params, facet.nameSlug, value.valueSlug)}
-                        />
-                        {value.value}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-              ))}
-              <button class="btn" type="submit">
-                Apply
-              </button>
-            </form>
-          </details>
-        ) : null}
-
-        {filtered ? (
-          <ul class="chips">
-            {params.filters.flatMap((filter) =>
-              filter.valueSlugs.map((valueSlug) => {
-                const label = describe(facets, filter.nameSlug, valueSlug)
-                return (
+        {landing ? (
+          shelves.length > 0 ? (
+            <section class="sec">
+              <h2>Shop by piece</h2>
+              <ul class="tiles">
+                {shelves.map(({ category: shelf, productCount }) => (
                   <li>
-                    {/* The axis name travels with the value: "Indigo" on its own
-                        stops reading as a colour once three axes are applied. */}
-                    <a
-                      class="chip"
-                      href={listingHref(basePath, toggleValue(params, filter.nameSlug, valueSlug))}
-                      aria-label={`Remove ${label}`}
-                    >
-                      {label}
-                      <span aria-hidden="true">×</span>
+                    <a href={`/c/${shelf.slug}`}>
+                      <b>{shelf.name}</b>
+                      <span>{pieces(productCount)}</span>
                     </a>
                   </li>
-                )
-              }),
-            )}
-            <li>
-              <a class="clear" href={basePath}>
-                Clear all
-              </a>
-            </li>
-          </ul>
-        ) : null}
-
-        {results.listings.length === 0 ? (
-          <div class="detail">
-            <p class="muted">
-              {filtered ? (
-                <>
-                  Nothing matches those filters. <a href={basePath}>Clear all</a>.
-                </>
-              ) : (
-                'Nothing here yet. New pieces are on their way.'
-              )}
-            </p>
-          </div>
+                ))}
+              </ul>
+            </section>
+          ) : null
         ) : (
-          <ul class="grid">
-            {results.listings.map((entry, index) => (
-              <Card listing={entry} sizes={cardSizes} eager={index < 2} />
-            ))}
-          </ul>
-        )}
+          <>
+            {results.total > 0 || filtered ? (
+              <details class="controls">
+                <summary>{applied > 0 ? `Filter and sort (${applied})` : 'Filter and sort'}</summary>
+                {/*
+                  No page input: applying always lands on page one, because page four
+                  of an unfiltered listing is rarely page four of a filtered one.
+                */}
+                <form method="get" action={basePath}>
+                  {/* A search's own scope travels with the form as a hidden field
+                      rather than an input a shopper could clear by accident:
+                      applying a filter must narrow the search, never drop it. */}
+                  {params.q ? <input type="hidden" name="q" value={params.q} /> : null}
+                  <div>
+                    <label class="label" for="sort">
+                      Sort
+                    </label>
+                    <select id="sort" name="sort">
+                      {sorts.map((sort) => (
+                        <option value={sort} selected={sort === params.sort}>
+                          {sortLabels[sort]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {/*
+                    The axes offered are the ones present in this scope, and they do
+                    not narrow to what is in stock: ADR-0007 keeps availability out
+                    of cached HTML, and a filter that hid sold-out variants would be
+                    exactly the stale assertion that promise exists to prevent.
+                  */}
+                  {facets.map((facet) => (
+                    <fieldset>
+                      <legend>{facet.name}</legend>
+                      <div class="values">
+                        {facet.values.map((value) => (
+                          <label for={`${facet.nameSlug}-${value.valueSlug}`}>
+                            <input
+                              type="checkbox"
+                              id={`${facet.nameSlug}-${value.valueSlug}`}
+                              name={facet.nameSlug}
+                              value={value.valueSlug}
+                              checked={hasValue(params, facet.nameSlug, value.valueSlug)}
+                            />
+                            {value.value}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  ))}
+                  <button class="btn" type="submit">
+                    Apply
+                  </button>
+                </form>
+              </details>
+            ) : null}
 
-        {results.pageCount > 1 ? (
-          <nav class="pages" aria-label="Pagination">
-            {params.page > 1 ? (
-              <a
-                class="prev"
-                rel="prev"
-                href={listingHref(basePath, withPage(params, params.page - 1))}
-              >
-                Previous
-              </a>
+            {filtered ? (
+              <ul class="chips">
+                {params.filters.flatMap((filter) =>
+                  filter.valueSlugs.map((valueSlug) => {
+                    const label = describe(facets, filter.nameSlug, valueSlug)
+                    return (
+                      <li>
+                        {/* The axis name travels with the value: "Indigo" on its own
+                            stops reading as a colour once three axes are applied. */}
+                        <a
+                          class="chip"
+                          href={listingHref(basePath, toggleValue(params, filter.nameSlug, valueSlug))}
+                          aria-label={`Remove ${label}`}
+                        >
+                          {label}
+                          <span aria-hidden="true">×</span>
+                        </a>
+                      </li>
+                    )
+                  }),
+                )}
+                <li>
+                  {/* Preserves `q`: clearing a colour inside a search must not
+                      throw the search away along with it. */}
+                  <a class="clear" href={listingHref(basePath, { ...emptyParams, q: params.q })}>
+                    Clear all
+                  </a>
+                </li>
+              </ul>
             ) : null}
-            <span aria-current="page">
-              Page {params.page} of {results.pageCount}
-            </span>
-            {params.page < results.pageCount ? (
-              <a
-                class="next"
-                rel="next"
-                href={listingHref(basePath, withPage(params, params.page + 1))}
-              >
-                Next
-              </a>
+
+            {results.listings.length === 0 ? (
+              <div class="detail">
+                <p class="muted">
+                  {isSearching(params) ? (
+                    <>
+                      Nothing matches “{params.q}”. <a href="/shop">All items</a>.
+                    </>
+                  ) : filtered ? (
+                    <>
+                      Nothing matches those filters. <a href={basePath}>Clear all</a>.
+                    </>
+                  ) : (
+                    'Nothing here yet. New pieces are on their way.'
+                  )}
+                </p>
+              </div>
+            ) : (
+              <ul class="grid">
+                {results.listings.map((entry, index) => (
+                  <Card listing={entry} sizes={cardSizes} eager={index < 2} />
+                ))}
+              </ul>
+            )}
+
+            {results.pageCount > 1 ? (
+              <nav class="pages" aria-label="Pagination">
+                {params.page > 1 ? (
+                  <a
+                    class="prev"
+                    rel="prev"
+                    href={listingHref(basePath, withPage(params, params.page - 1))}
+                  >
+                    Previous
+                  </a>
+                ) : null}
+                <span aria-current="page">
+                  Page {params.page} of {results.pageCount}
+                </span>
+                {params.page < results.pageCount ? (
+                  <a
+                    class="next"
+                    rel="next"
+                    href={listingHref(basePath, withPage(params, params.page + 1))}
+                  >
+                    Next
+                  </a>
+                ) : null}
+              </nav>
             ) : null}
-          </nav>
-        ) : null}
+          </>
+        )}
       </main>
     </StorefrontLayout>,
+  )
+}
+
+/**
+ * A GET form landing on `/search?q=…` — an edge-cacheable URL, per ADR-0007 —
+ * rather than fetch and a results panel. Autocomplete and instant results are
+ * where most storefronts spend their whole JavaScript budget; ADR-0007
+ * already spent this one on the Pathao cascade, the cart badge, add-to-cart
+ * and recently viewed. Spending nothing here is what keeps that budget free
+ * for the things HTML genuinely cannot do — the version below is also the
+ * one that still works on the networks the ADR was written for, before a
+ * single byte of script would have had the chance to run.
+ */
+function SearchForm(props: { q: string }) {
+  return (
+    <form class="search" method="get" action="/search">
+      <input
+        type="search"
+        name="q"
+        value={props.q}
+        placeholder="Search the collection"
+        aria-label="Search the collection"
+        autocomplete="off"
+      />
+      <button class="btn" type="submit">
+        Search
+      </button>
+    </form>
   )
 }
 
