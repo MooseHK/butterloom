@@ -3,7 +3,7 @@
 import './support/tempDb.js'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { adminOrders } from '../src/admin/orders.js'
 import { adminProducts } from '../src/admin/products.js'
@@ -224,3 +224,102 @@ test('admin stock endpoints allow adding, updating and deleting variants', async
   const remaining = db.select().from(productVariants).where(eq(productVariants.id, lStock.id)).all()
   assert.equal(remaining.length, 0)
 })
+
+test('admin product detail renders editable UI with customer layout structure', async () => {
+  const app = buildAdminApp()
+  const [p] = db
+    .insert(products)
+    .values({
+      slug: `detail-ui-test-${Date.now()}`,
+      title: 'Silk Khadi Kurta',
+      pricePaisa: 350000,
+      description: 'Handspun silk and cotton blend.',
+    })
+    .returning()
+    .all()
+  if (!p) throw new Error('Product not created')
+
+  db.insert(productVariants)
+    .values({ productId: p.id, label: 'Medium', stockQty: 12 })
+    .run()
+
+  const res = await app.request(`/admin/products/${p.id}`)
+  assert.equal(res.status, 200)
+  const html = await res.text()
+
+  // Verifies editable inputs instead of static display
+  assert.match(html, /<input[^>]+name="title"[^>]+value="Silk Khadi Kurta"/)
+  assert.match(html, /<input[^>]+name="price"[^>]+value="3500\.00"/)
+  assert.match(html, /Handspun silk and cotton blend\./)
+  assert.match(html, /<input[^>]+name="stock_\d+"[^>]+value="12"/)
+  assert.match(html, /id="toggle-add-variant-btn"/)
+  assert.match(html, /class="[^"]*gallery-add-card/)
+})
+
+test('admin can update product details, variants and add new variant in one submit', async () => {
+  const app = buildAdminApp()
+  const [p] = db
+    .insert(products)
+    .values({
+      slug: `edit-test-${Date.now()}`,
+      title: 'Original Title',
+      pricePaisa: 100000,
+      description: 'Old description',
+    })
+    .returning()
+    .all()
+  if (!p) throw new Error('Product not created')
+
+  const [v1] = db
+    .insert(productVariants)
+    .values({ productId: p.id, label: 'Small', stockQty: 5 })
+    .returning()
+    .all()
+  if (!v1) throw new Error('Variant not created')
+
+  const form = new FormData()
+  form.set('title', 'Updated Silk Kurta')
+  form.set('price', '2450.50')
+  form.set('description', 'Updated rich texture and handloom weave.')
+  form.set(`stock_${v1.id}`, '18')
+  form.set('new_oname_0', 'Size')
+  form.set('new_ovalue_0', 'Medium')
+  form.set('new_stock', '22')
+
+  const res = await app.request(`/admin/products/${p.id}`, {
+    method: 'POST',
+    body: form,
+  })
+  assert.equal(res.status, 303)
+
+  // Verify product table was updated
+  const [updatedProduct] = db.select().from(products).where(eq(products.id, p.id)).all()
+  assert.equal(updatedProduct?.title, 'Updated Silk Kurta')
+  assert.equal(updatedProduct?.pricePaisa, 245050)
+  assert.equal(updatedProduct?.description, 'Updated rich texture and handloom weave.')
+
+  // Verify variant table was updated and new variant inserted
+  const allVariants = db
+    .select()
+    .from(productVariants)
+    .where(eq(productVariants.productId, p.id))
+    .orderBy(asc(productVariants.label))
+    .all()
+  assert.equal(allVariants.length, 2)
+  assert.equal(allVariants[0]?.label, 'Medium')
+  assert.equal(allVariants[0]?.stockQty, 22)
+  assert.equal(allVariants[1]?.label, 'Small')
+  assert.equal(allVariants[1]?.stockQty, 18)
+
+  // Verify variant options inserted for the new variant
+  const mediumVariant = allVariants[0]!
+  const options = db
+    .select()
+    .from(variantOptions)
+    .where(eq(variantOptions.variantId, mediumVariant.id))
+    .all()
+  assert.equal(options.length, 1)
+  assert.equal(options[0]?.name, 'Size')
+  assert.equal(options[0]?.value, 'Medium')
+})
+

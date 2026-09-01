@@ -32,6 +32,7 @@ import { AdminLayout } from '../views/layout.js'
 import { Picture } from '../views/picture.js'
 import { maxRows, parseRows, productSlug, uniqueSlug } from './bulkForm.js'
 import type { DraftProduct } from './bulkForm.js'
+import { slugify } from '../lib/slug.js'
 import { maxVariantRows, optionsPerRow, parseStock, parseVariantRows } from './variantForm.js'
 
 export const adminProducts = new Hono()
@@ -407,6 +408,27 @@ adminProducts.post('/', async (c) => {
   return c.redirect(`${back}?${query}`, 303)
 })
 
+const addVariantScript = `
+  var toggleAdd = document.getElementById('toggle-add-variant-btn')
+  var newVariantChip = document.getElementById('new-variant-chip')
+  var cancelAdd = document.getElementById('cancel-add-variant-btn')
+  var newOvalueInput = document.getElementById('new-ovalue-input')
+  if (toggleAdd && newVariantChip) {
+    toggleAdd.addEventListener('click', function () {
+      toggleAdd.hidden = true
+      newVariantChip.hidden = false
+      if (newOvalueInput) newOvalueInput.focus()
+    })
+    if (cancelAdd) {
+      cancelAdd.addEventListener('click', function () {
+        newVariantChip.hidden = true
+        toggleAdd.hidden = false
+        if (newOvalueInput) newOvalueInput.value = ''
+      })
+    }
+  }
+`
+
 adminProducts.get('/:id', (c) => {
   const id = Number(c.req.param('id'))
   const [product] = db.select().from(products).where(eq(products.id, id)).all()
@@ -432,6 +454,7 @@ adminProducts.get('/:id', (c) => {
   // the point of the datalist is to offer the spelling that exists before a
   // second one is typed.
   const axisNames = facetsFor(null).map((f) => f.name)
+  const totalStock = variants.reduce((acc, v) => acc + v.variant.stockQty, 0)
 
   const error = c.req.query('error')
   const uploaded = Number(c.req.query('uploaded') ?? 0)
@@ -441,173 +464,455 @@ adminProducts.get('/:id', (c) => {
 
   return c.html(
     <AdminLayout
-      title={product.title}
+      title={`Edit ${product.title}`}
       section="products"
       back={{ href: '/admin/products', label: 'All products' }}
+      hideTitleHeading
     >
-      <p class="muted">
-        {formatPaisa(product.pricePaisa)} ·{' '}
-        <a href={`/p/${product.slug}`} target="_blank" rel="noopener">
-          view on the storefront ↗
-        </a>
-      </p>
-      {error ? <p class="notice error">{error}</p> : null}
-      {notice ? <p class="notice">{notice}</p> : null}
-      {uploaded > 0 ? (
-        <p class="notice">
-          {uploaded} {uploaded === 1 ? 'photograph' : 'photographs'} accepted — encoding in the
-          background. Reload for progress.
-        </p>
-      ) : null}
-
-      <form method="post" action={`/admin/products/${product.id}/category`}>
-        <label>
-          Category
-          <select name="categoryId">
-            <option value="" selected={product.categoryId === null}>
-              Unshelved
-            </option>
-            {shelves.map((category) => (
-              <option value={category.id} selected={product.categoryId === category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p class="actions">
-          <button type="submit">Save category</button>
-        </p>
-      </form>
-
-      <h2>Variants</h2>
-      {variants.map(({ variant, options }) => (
-        <form
-          class="row"
-          method="post"
-          action={`/admin/products/${product.id}/variants/${variant.id}`}
-        >
-          <p class="span">
-            <strong>{variant.label}</strong>
-            {options.length > 0 ? (
-              <span class="muted"> · {options.map((o) => `${o.name}: ${o.value}`).join(' · ')}</span>
-            ) : null}
+      <div class="product-editor">
+        {error ? <p class="notice error">{error}</p> : null}
+        {notice ? <p class="notice">{notice}</p> : null}
+        {uploaded > 0 ? (
+          <p class="notice">
+            {uploaded} {uploaded === 1 ? 'photograph' : 'photographs'} accepted — encoding in the
+            background. Reload for progress.
           </p>
-          <label>
-            Stock
-            <input
-              name="stock"
-              type="number"
-              min="0"
-              step="1"
-              inputmode="numeric"
-              value={String(variant.stockQty)}
-            />
-          </label>
-          <p class="span actions">
-            <button type="submit">Save stock</button>
-            <button
-              type="submit"
-              formaction={`/admin/products/${product.id}/variants/${variant.id}/delete`}
-            >
-              Delete
-            </button>
-          </p>
-        </form>
-      ))}
-      {variants.length === 0 ? (
-        <p class="muted">
-          None yet. A product with one configuration still wants one variant — that is what an
-          order will eventually hold.
-        </p>
-      ) : null}
+        ) : null}
 
-      <form class="bulk" method="post" action={`/admin/products/${product.id}/variants`}>
-        <div id="rows">
-          {Array.from({ length: initialVariantRows }, (_, i) => (
-            <VariantRow i={i} />
-          ))}
-        </div>
-        <template id="row-template">
-          <VariantRow i="__i__" />
-        </template>
-        <p class="actions">
-          <button type="button" id="add-row" hidden>
-            Add another row
-          </button>
-          <button type="submit">Add variants</button>
-        </p>
-        <p class="muted">
-          Blank rows are ignored. The label is the values joined — Indigo / M — so two rows with
-          the same options are one variant entered twice, and the second is refused rather than
-          saved. Stock stays in the back office: nothing on the storefront reads it (ADR-0007).
-        </p>
-      </form>
-      {/* Shared by every row, including the ones the script clones. */}
-      <datalist id="option-names">
-        {axisNames.map((name) => (
-          <option value={name} />
-        ))}
-      </datalist>
-      <script
-        dangerouslySetInnerHTML={{ __html: addRowScript(initialVariantRows, maxVariantRows) }}
-      />
-
-      <h2>Photographs</h2>
-      <form method="post" action={`/admin/products/${product.id}/images`} enctype="multipart/form-data">
-        <label>
-          Photographs
-          <input type="file" name="photos" required multiple accept={photoTypes} />
-        </label>
-        <label>
-          Alt text
-          <input name="altText" maxlength={200} placeholder="Indigo jamdani saree, full length" />
-        </label>
-        <button type="submit">Upload</button>
-        <p class="muted">
-          The whole derivative ladder is generated ahead of the request, never on one (ADR-0007) —
-          now on a background worker, so the upload returns as soon as the bytes are safe.
-        </p>
-      </form>
-
-      {waiting.length > 0 ? (
-        <ul class="queue">
-          {waiting.map((job) => (
-            <li>
-              <span class={job.error ? 'fail' : 'muted'}>
-                {job.originalFilename} — {job.error ? job.error : 'encoding…'}
-              </span>
-              {job.error ? (
-                <form method="post" action={`/admin/products/${id}/pending/${job.id}/discard`}>
-                  <button type="submit">Discard</button>
-                </form>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      <ul class="gallery">
-        {images.map((image) => {
-          const list = byImage.get(image.id) ?? []
-          return (
-            <li>
-              <Picture image={image} derivatives={list} sizes="180px" />
-              <p class="muted">
-                {image.width}×{image.height} · {list.length} derivatives ·{' '}
-                {Math.round(list.reduce((n, d) => n + d.byteSize, 0) / 1024)} KB total
-              </p>
-              <form method="post" action={`/admin/products/${id}/images/${image.id}/delete`}>
-                <button type="submit" onclick="return confirm('Remove this image?')">
-                  Remove
-                </button>
+        {/* Gallery / Photographs section styled like customer product detail */}
+        {images.length === 0 && waiting.length === 0 ? (
+          <ul class="admin-gallery empty-gallery">
+            <li class="gallery-add-item empty-add-item">
+              <form
+                method="post"
+                action={`/admin/products/${id}/images`}
+                enctype="multipart/form-data"
+                class="gallery-upload-form"
+              >
+                <label class="gallery-add-card empty-add-card" title="Upload photographs">
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  <span>Upload Photographs</span>
+                  <input
+                    type="file"
+                    name="photos"
+                    multiple
+                    accept={photoTypes}
+                    class="visually-hidden-file"
+                    onchange="this.form.submit()"
+                  />
+                </label>
               </form>
             </li>
-          )
-        })}
-      </ul>
-      {images.length === 0 && waiting.length === 0 ? <p class="muted">No images yet.</p> : null}
+          </ul>
+        ) : (
+          <ul class="admin-gallery">
+            {images.map((image) => {
+              const list = byImage.get(image.id) ?? []
+              return (
+                <li class="gallery-item admin-photo-item">
+                  <div class="photo-container">
+                    <Picture
+                      image={image}
+                      derivatives={list}
+                      sizes="(min-width: 640px) 510px, calc(85vw - 34px)"
+                    />
+                    <form
+                      method="post"
+                      action={`/admin/products/${id}/images/${image.id}/delete`}
+                      class="photo-del-form"
+                    >
+                      <button
+                        type="submit"
+                        class="photo-del-btn"
+                        title="Remove photograph"
+                        onclick="return confirm('Remove this photograph?')"
+                        aria-label="Remove photograph"
+                      >
+                        ×
+                      </button>
+                    </form>
+                  </div>
+                  <p class="muted photo-meta">
+                    {image.width}×{image.height} · {list.length} derivatives
+                  </p>
+                </li>
+              )
+            })}
+
+            {waiting.map((job) => (
+              <li class="gallery-item admin-photo-item">
+                <div class="photo-container photo-pending">
+                  <span class="muted photo-meta">{job.originalFilename}</span>
+                  <span class={job.error ? 'fail' : 'muted'} style="font-size: 13px;">
+                    {job.error ? job.error : 'Encoding…'}
+                  </span>
+                  {job.error ? (
+                    <form method="post" action={`/admin/products/${id}/pending/${job.id}/discard`}>
+                      <button
+                        type="submit"
+                        class="secondary"
+                        style="font-size: 12px; padding: 4px 8px;"
+                      >
+                        Discard
+                      </button>
+                    </form>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+
+            <li class="gallery-add-item">
+              <form
+                method="post"
+                action={`/admin/products/${id}/images`}
+                enctype="multipart/form-data"
+                class="gallery-upload-form"
+              >
+                <label class="gallery-add-card" title="Add photograph">
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  <span>Add photo</span>
+                  <input
+                    type="file"
+                    name="photos"
+                    multiple
+                    accept={photoTypes}
+                    class="visually-hidden-file"
+                    onchange="this.form.submit()"
+                  />
+                </label>
+              </form>
+            </li>
+          </ul>
+        )}
+
+        {/* Product Details Section: Title, Category, Price, Description, Variants & Counts */}
+        <div class="admin-detail">
+          <form method="post" action={`/admin/products/${product.id}`} class="admin-detail-form">
+            <div>
+              <span class="field-label">Title</span>
+              <input
+                type="text"
+                name="title"
+                value={product.title}
+                class="edit-title-input"
+                placeholder="Product Title"
+                required
+                maxlength={200}
+              />
+            </div>
+
+            <div class="edit-category-row">
+              <span class="field-label">Category (Shelf)</span>
+              <select name="categoryId">
+                <option value="" selected={product.categoryId === null}>
+                  Unshelved
+                </option>
+                {shelves.map((cat) => (
+                  <option value={cat.id} selected={product.categoryId === cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <span class="field-label">Price</span>
+              <div class="edit-price-row">
+                <span class="price-symbol">৳</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  name="price"
+                  value={(product.pricePaisa / 100).toFixed(2)}
+                  class="edit-price-input"
+                  required
+                />
+                <span class="price-suffix">BDT</span>
+              </div>
+            </div>
+
+            <div>
+              <span class="field-label">Description</span>
+              <textarea
+                name="description"
+                rows={4}
+                class="edit-desc-input"
+                placeholder="Product description..."
+              >
+                {product.description}
+              </textarea>
+            </div>
+
+            <div class="variant-group">
+              <div class="variant-header-row">
+                <span class="variant-label">Variants & Stock Quantity</span>
+                <span class="muted" style="font-size: 12px;">
+                  {totalStock} in stock
+                </span>
+              </div>
+              <div class="variant-options admin-variant-options" id="variant-list">
+                {variants.map(({ variant, options }) => (
+                  <div class="admin-variant-chip" key={variant.id}>
+                    <span class="variant-chip-name">{variant.label}</span>
+                    <span class="variant-divider">·</span>
+                    <div class="variant-qty-wrapper">
+                      <input
+                        type="number"
+                        name={`stock_${variant.id}`}
+                        value={variant.stockQty}
+                        min="0"
+                        step="1"
+                        inputmode="numeric"
+                        class="variant-qty-input"
+                        title="Stock count"
+                        required
+                      />
+                      <span class="variant-qty-label">units</span>
+                    </div>
+                    {variants.length > 1 ? (
+                      <button
+                        type="submit"
+                        formAction={`/admin/products/${product.id}/variants/${variant.id}/delete`}
+                        formMethod="post"
+                        class="variant-del-btn"
+                        title="Delete variant"
+                        onclick="return confirm('Delete this variant?')"
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+
+                {/* + icon for add variant next to existing ones */}
+                <button
+                  type="button"
+                  id="toggle-add-variant-btn"
+                  class="add-variant-btn"
+                  title="Add variant"
+                >
+                  <span>+</span>
+                  <span>Add variant</span>
+                </button>
+
+                <div id="new-variant-chip" class="admin-variant-chip new-variant-chip" hidden>
+                  <div class="new-variant-options-inputs">
+                    <input
+                      type="text"
+                      name="new_oname_0"
+                      placeholder="Axis (e.g. Size)"
+                      list="option-names"
+                      class="variant-axis-input"
+                    />
+                    <input
+                      type="text"
+                      name="new_ovalue_0"
+                      id="new-ovalue-input"
+                      placeholder="Value (e.g. M)"
+                      class="variant-val-input"
+                    />
+                  </div>
+                  <span class="variant-divider">·</span>
+                  <div class="variant-qty-wrapper">
+                    <input
+                      type="number"
+                      name="new_stock"
+                      id="new-stock-input"
+                      value="0"
+                      min="0"
+                      step="1"
+                      inputmode="numeric"
+                      class="variant-qty-input"
+                    />
+                    <span class="variant-qty-label">units</span>
+                  </div>
+                  <button
+                    type="button"
+                    id="cancel-add-variant-btn"
+                    class="variant-del-btn"
+                    title="Cancel"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <datalist id="option-names">
+              {axisNames.map((name) => (
+                <option value={name} />
+              ))}
+            </datalist>
+
+            <button type="submit" class="btn" style="margin-top: 10px;">
+              Save Changes
+            </button>
+
+            <div class="admin-detail-footer">
+              <span class="muted">
+                Slug: <code>/p/{product.slug}</code>
+              </span>
+              <a href={`/p/${product.slug}`} target="_blank" rel="noopener">
+                View on storefront ↗
+              </a>
+            </div>
+          </form>
+        </div>
+      </div>
+      <script dangerouslySetInnerHTML={{ __html: addVariantScript }} />
+      <noscript>
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `#new-variant-chip { display: inline-flex !important; } #toggle-add-variant-btn { display: none !important; }`,
+          }}
+        />
+      </noscript>
     </AdminLayout>,
   )
+})
+
+adminProducts.post('/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const [product] = db.select().from(products).where(eq(products.id, id)).all()
+  if (!product) return c.notFound()
+
+  const back = `/admin/products/${id}`
+  const fail = (message: string) => c.redirect(`${back}?error=${encodeURIComponent(message)}`, 303)
+
+  let form: FormData
+  try {
+    form = await c.req.formData()
+  } catch {
+    return fail('Form submission was not readable')
+  }
+
+  const title = String(form.get('title') ?? '').trim()
+  if (!title) {
+    return fail('Title cannot be blank')
+  }
+
+  const priceRaw = String(form.get('price') ?? '').trim()
+  const priceFloat = parseFloat(priceRaw)
+  if (isNaN(priceFloat) || priceFloat <= 0) {
+    return fail('Price must be greater than zero')
+  }
+  const pricePaisa = Math.round(priceFloat * 100)
+  const description = String(form.get('description') ?? '').trim()
+
+  const rawCat = String(form.get('categoryId') ?? '').trim()
+  const categoryId = rawCat ? Number(rawCat) : null
+  if (categoryId !== null) {
+    const [cat] = db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(eq(categories.id, categoryId))
+      .all()
+    if (!cat) return fail('No such category.')
+  }
+
+  try {
+    db.update(products)
+      .set({
+        title,
+        pricePaisa,
+        description,
+        categoryId,
+      })
+      .where(eq(products.id, id))
+      .run()
+  } catch (err) {
+    console.error('[admin] update product error', err)
+    return fail('Failed to update product details')
+  }
+
+  // Update existing variant stock counts
+  const existingVariants = db
+    .select()
+    .from(productVariants)
+    .where(eq(productVariants.productId, id))
+    .all()
+
+  for (const v of existingVariants) {
+    const rawStock = form.get(`stock_${v.id}`) ?? form.get(`variant_stock_${v.id}`)
+    if (rawStock !== null) {
+      const stockQty = parseStock(String(rawStock), 'reject')
+      if (stockQty !== null) {
+        try {
+          db.update(productVariants)
+            .set({ stockQty })
+            .where(and(eq(productVariants.id, v.id), eq(productVariants.productId, id)))
+            .run()
+        } catch (err) {
+          console.error(`[admin] failed to update variant stock ${v.id}`, err)
+        }
+      }
+    }
+  }
+
+  // Handle new variant if submitted via inline fields
+  const newAxisName = String(form.get('new_oname_0') ?? '').trim()
+  const newAxisVal = String(form.get('new_ovalue_0') ?? form.get('new_variant_label') ?? '').trim()
+  const newStockRaw = form.get('new_stock') ?? form.get('new_variant_qty')
+  if (newAxisVal) {
+    const newStock = parseStock(String(newStockRaw ?? '0'), 'zero') ?? 0
+    const nextPos = existingVariants.reduce((n, v) => Math.max(n, v.position + 1), 0)
+    const label = newAxisVal
+    try {
+      db.transaction((tx) => {
+        const [row] = tx
+          .insert(productVariants)
+          .values({
+            productId: id,
+            label,
+            stockQty: newStock,
+            position: nextPos,
+          })
+          .returning({ id: productVariants.id })
+          .all()
+        if (row && newAxisName) {
+          tx.insert(variantOptions)
+            .values({
+              variantId: row.id,
+              name: newAxisName,
+              nameSlug: slugify(newAxisName, 'option'),
+              value: newAxisVal,
+              valueSlug: slugify(newAxisVal, 'value'),
+              position: 0,
+            })
+            .run()
+        }
+      })
+    } catch (err) {
+      console.error('[admin] failed to add new variant from main form', err)
+    }
+  }
+
+  return c.redirect(`${back}?saved=${encodeURIComponent('Product updated.')}`, 303)
 })
 
 adminProducts.post('/:id/images', async (c) => {
