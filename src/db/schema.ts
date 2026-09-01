@@ -126,7 +126,43 @@ export const imageDerivatives = sqliteTable(
   ],
 )
 
+/**
+ * An uploaded photograph whose derivative ladder has not been cut yet. Cutting
+ * one is seconds of CPU, and a bulk of twenty products is minutes of it —
+ * ADR-0007 still puts that work at upload time rather than on a request, but
+ * the *operator* should not be the one holding it: the bytes land in the blob
+ * store under `original_sha256`, this row records what they belong to, and one
+ * worker drains the table behind the redirect.
+ *
+ * A table rather than an in-memory list, for two reasons: a restart mid-bulk
+ * resumes instead of dropping the upload, and the admin can say what is still
+ * cooking without asking the encoder.
+ */
+export const pendingImages = sqliteTable(
+  'pending_images',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    productId: integer('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    altText: text('alt_text').notNull().default(''),
+    originalFilename: text('original_filename').notNull(),
+    contentType: text('content_type').notNull(),
+    /** Key of the uploaded bytes in the blob store; the worker reads them back. */
+    originalSha256: text('original_sha256').notNull(),
+    /**
+     * Null while the row is waiting or being worked. Set when encoding failed,
+     * which both parks the row — the worker only claims null-error rows — and
+     * gives the operator something to read.
+     */
+    error: text('error'),
+    createdAt: integer('created_at').notNull().default(now),
+  },
+  (t) => [index('pending_images_product_idx').on(t.productId)],
+)
+
 export type Product = typeof products.$inferSelect
 export type ProductImage = typeof productImages.$inferSelect
 export type ImageDerivative = typeof imageDerivatives.$inferSelect
 export type SiteImage = typeof siteImages.$inferSelect
+export type PendingImage = typeof pendingImages.$inferSelect

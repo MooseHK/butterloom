@@ -23,4 +23,16 @@ export const config = {
   /** libvips ships header reading as its own binary. */
   vipsHeaderBin: process.env.BUTTERLOOM_VIPSHEADER_BIN ?? 'vipsheader',
   maxUploadBytes: Number(process.env.BUTTERLOOM_MAX_UPLOAD_BYTES ?? 20 * 1024 * 1024),
+  /**
+   * Ceiling on one admin POST. A bulk submit arrives as a single multipart body
+   * that the server buffers whole before it can count anything in it, so this
+   * is the only guard that runs before the memory is spent.
+   */
+  maxRequestBytes: Number(process.env.BUTTERLOOM_MAX_REQUEST_BYTES ?? 64 * 1024 * 1024),
+  /**
+   * How many photographs may be waiting on the encoder at once. Past this the
+   * admin refuses the submit rather than filling the disk with originals nobody
+   * has looked at yet.
+   */
+  maxPendingImages: Number(process.env.BUTTERLOOM_MAX_PENDING_IMAGES ?? 200),
 } as const

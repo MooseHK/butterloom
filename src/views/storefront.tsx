@@ -165,7 +165,6 @@ const css = `
       repeating-linear-gradient(0deg, var(--gridline) 0 1px, transparent 1px 28px),
       repeating-linear-gradient(90deg, var(--gridline) 0 1px, transparent 1px 28px); }
   .brand { gap: 16px; margin: 0 -20px; padding: 34px 20px; }
-  .brand p { margin: 0; max-width: 28ch; color: var(--secondary); }
   footer.site { gap: 11px; margin-top: 44px; padding: 36px 20px 32px;
     border-top: 1px solid var(--hairline); }
   .seal { width: 132px; height: 132px; border-radius: 50%; overflow: hidden;
@@ -176,18 +175,10 @@ const css = `
   /* The editorial slot (site_images.slot = 'hero'). Bleeds to main's own edge,
      which is the viewport on a phone; 4/5 is the design's 390 x 488 kept as a
      ratio so it scales rather than snapping at one width. */
-  .hero { position: relative; margin: 0 -20px; display: flex; align-items: flex-end;
+  .hero { position: relative; margin: 0 -20px;
     aspect-ratio: 4 / 5; max-height: 70vh; overflow: hidden; background: var(--shot); }
   .hero .hero-shot { position: absolute; inset: 0; }
   .hero .hero-shot img { width: 100%; height: 100%; object-fit: cover; }
-  /* Literal light ink on a fixed dark scrim in both themes: this type sits on a
-     photograph, not on paper, so the palette that flips underneath it is the
-     wrong one to follow. */
-  .hero .scrim { position: relative; width: 100%; padding: 26px 20px 24px;
-    background: linear-gradient(to top, rgba(35, 38, 36, 0.62),
-      rgba(35, 38, 36, 0.18) 62%, rgba(35, 38, 36, 0)); }
-  .hero .scrim p { margin: 0; max-width: 18ch; color: #f6f3ec;
-    font: 400 26px/1.22 ui-serif, Georgia, "Times New Roman", serif; }
 
   .grid { display: grid; gap: 30px 14px; padding: 22px 0 0; margin: 0; list-style: none;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }

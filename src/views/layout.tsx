@@ -10,7 +10,7 @@ export function AdminLayout(
   props: PropsWithChildren<{
     title: string
     /** Which nav item is the current one. Omitted on pages that are in neither. */
-    section?: 'products' | 'site-images'
+    section?: 'home' | 'products' | 'site-images'
     /** A way back up one level, for pages reached from a list. */
     back?: { href: string; label: string }
   }>,
@@ -40,10 +40,13 @@ export function AdminLayout(
             back button, which is not navigation, it is the absence of it.
           */}
           <header>
-            <a class="wm" href="/admin/products">
+            <a class="wm" href="/admin">
               Butterloom admin
             </a>
             <nav>
+              <a href="/admin" aria-current={props.section === 'home' ? 'page' : undefined}>
+                Overview
+              </a>
               <a
                 href="/admin/products"
                 aria-current={props.section === 'products' ? 'page' : undefined}
@@ -109,6 +112,23 @@ const css = `
   th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #8883; }
   .gallery { display: flex; flex-wrap: wrap; gap: 14px; list-style: none; padding: 0; }
   .gallery img { width: 180px; height: auto; border-radius: 6px; display: block; }
+  /* The bulk form is a table of rows, not a single column of fields, so it
+     takes the whole measure rather than the 34rem a one-product form wants. */
+  form.bulk { max-width: none; }
+  .row { display: grid; grid-template-columns: 2fr 1fr; gap: 10px 14px;
+    padding: 12px; border: 1px solid #8883; border-radius: 8px; }
+  .row + .row { margin-top: 10px; }
+  .row .span { grid-column: 1 / -1; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; }
+  .queue { display: grid; gap: 8px; margin: 0 0 20px; padding: 0; list-style: none; }
+  .queue li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .queue form { margin: 0; }
+  .cards { display: grid; gap: 14px; padding: 0; list-style: none;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+  .cards li { padding: 14px 16px; border: 1px solid #8883; border-radius: 8px; }
+  .cards h2 { margin: 0 0 4px; font-size: 1.1rem; }
+  .cards p { margin: 0 0 6px; }
+  .fail { color: #d33; }
   .notice { padding: 10px 12px; border-radius: 6px; border: 1px solid #8886; }
   .notice.error { border-color: #d33; }
   .muted { color: #8889; }

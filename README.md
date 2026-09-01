@@ -47,20 +47,35 @@ sudo apt-get install -y libvips-tools    # provides vips and vipsheader
 npm install
 cp .env.example .env
 npm run db:generate                      # only after changing src/db/schema.ts
-npm start                                # http://localhost:3000/admin/products
+npm start                                # http://localhost:3000/admin
 ```
 
 `npm run check` typechecks, `npm test` runs the unit tests.
 
 ### What is built
 
-- **Products** — title, slug, description, price in integer paisa (ADR-0006),
-  created and listed in the admin.
-- **Image upload** — one photograph per upload, from which the whole derivative
-  ladder is generated at upload time and never on a request path (ADR-0007).
+- **Admin index** — `/admin` lists what there is to edit and how much of it
+  there is. Everything under `/admin` is `private, no-store` at the origin as
+  well as excluded from the cache rules (ADR-0007).
+- **Products** — title, description, price in integer paisa (ADR-0006). Added in
+  bulk: one form of rows, photographs attached to the row that owns them, one
+  submit. The slug is derived from the title and numbered on collision, so it is
+  not a field anyone types twenty times.
+- **Image upload** — many photographs per submit. The bytes are stored and the
+  POST returns; a single background worker cuts each derivative ladder off a
+  `pending_images` queue, so an operator never waits for an encode and a restart
+  mid-batch resumes rather than losing it. The ladder is still generated ahead
+  of any request and never on one (ADR-0007).
   Derivatives are named by the sha256 of their own bytes, so they are immutable,
   carry far-future cache headers, and need no purge path. The original is kept
   too, so re-cutting the ladder does not mean asking the operator to re-upload.
+  A photograph the encoder cannot read is parked on the queue with its error
+  shown against the product, where it can be discarded and re-uploaded.
+- **Upload limits** — one worker (libvips already takes a core per encode), a
+  ceiling on photographs waiting on it (`BUTTERLOOM_MAX_PENDING_IMAGES`), and a
+  ceiling on one admin submit (`BUTTERLOOM_MAX_REQUEST_BYTES`, checked before
+  the body is read). A bulk that would exceed them is refused whole, with a
+  sentence saying why, rather than half-applied.
 - **`<picture>` rendering** — AVIF then WebP then a JPEG fallback, with `srcset`,
   `sizes` and intrinsic `width`/`height` so nothing shifts as images arrive.
 - **Catalogue and product pages** — `/` and `/p/:slug`, server-rendered, no client

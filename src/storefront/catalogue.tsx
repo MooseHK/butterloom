@@ -33,18 +33,11 @@ const shotSizes = '(min-width: 640px) 510px, calc(85vw - 34px)'
  */
 const heroSizes = '(min-width: 640px) 640px, 100vw'
 
-/** The one line of prose on the front page, and the page's own meta description. */
-const tagline = 'Handwoven South Asian ethnic fashion, delivered across Bangladesh.'
-
 storefront.get('/', (c) => {
   const listings = listCatalogue()
   const hero = findSiteImage('hero')
   return c.html(
-    <StorefrontLayout
-      title="Butterloom — South Asian ethnic fashion"
-      description={tagline}
-      canonicalPath="/"
-    >
+    <StorefrontLayout title="butterloom" canonicalPath="/">
       <main>
         {/*
           The hero slot is empty until an operator fills it, and the front page
@@ -63,14 +56,10 @@ storefront.get('/', (c) => {
               loading="eager"
               className="hero-shot"
             />
-            <div class="scrim">
-              <p>{tagline}</p>
-            </div>
           </section>
         ) : (
           <div class="brand">
             <Seal alt="Butterloom — woven in comfort" />
-            <p>{tagline}</p>
           </div>
         )}
         <div class="head">
@@ -117,7 +106,7 @@ storefront.get('/p/:slug', (c) => {
 
   return c.html(
     <StorefrontLayout
-      title={`${product.title} — Butterloom`}
+      title={`${product.title} — butterloom`}
       description={summarise(product.description) || undefined}
       canonicalPath={`/p/${product.slug}`}
     >
@@ -176,7 +165,7 @@ function summarise(description: string): string {
 /** Shared 404 page, so a mistyped slug still looks like the shop. */
 export function notFound(c: Context) {
   return c.html(
-    <StorefrontLayout title="Not found — Butterloom" canonicalPath={c.req.path}>
+    <StorefrontLayout title="butterloom" canonicalPath={c.req.path}>
       <main>
         <div class="head">
           <h1>Not found</h1>
