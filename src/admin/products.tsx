@@ -350,6 +350,11 @@ adminProducts.get('/:id', (c) => {
                 {image.width}×{image.height} · {list.length} derivatives ·{' '}
                 {Math.round(list.reduce((n, d) => n + d.byteSize, 0) / 1024)} KB total
               </p>
+              <form method="post" action={`/admin/products/${id}/images/${image.id}/delete`}>
+                <button type="submit" onclick="return confirm('Remove this image?')">
+                  Remove
+                </button>
+              </form>
             </li>
           )
         })}
@@ -421,3 +426,19 @@ adminProducts.post('/:id/pending/:pendingId/discard', (c) => {
     .run()
   return c.redirect(`/admin/products/${id}`, 303)
 })
+
+/**
+ * Remove a finished image from a product's gallery. The cascade on
+ * image_derivatives handles the DB side; the derivative blobs stay in storage
+ * because they are content-addressed and immutable (ADR-0007) — a URL that has
+ * been served keeps resolving, and the same bytes may belong to another image.
+ */
+adminProducts.post('/:id/images/:imageId/delete', (c) => {
+  const id = Number(c.req.param('id'))
+  const imageId = Number(c.req.param('imageId'))
+  db.delete(productImages)
+    .where(and(eq(productImages.id, imageId), eq(productImages.productId, id)))
+    .run()
+  return c.redirect(`/admin/products/${id}`, 303)
+})
+
