@@ -2,10 +2,12 @@
 
 Direct-to-consumer South Asian ethnic fashion, selling online in Bangladesh.
 
-This repository is currently a **design record**, not an application. The
-`index.html` at the root is a superseded static prototype — a client-side cart
-and mock admin over four demo products — kept only for reference. Nothing in it
-is being carried forward.
+Implementation has started. The `index.html` at the root is a superseded static
+prototype — a client-side cart and mock admin over four demo products — kept only
+for reference. Nothing in it is being carried forward.
+
+What runs today is the first slice: a product record and the image upload
+pipeline behind it. See [Running the application](#running-the-application).
 
 ## Where the thinking lives
 
@@ -37,6 +39,45 @@ driven by three constraints: customers on mobile networks where round trips and
 JavaScript execution cost more than bytes, a catalogue where images are roughly
 97% of page weight, and a codebase maintained by AI agents rather than by a team
 whose language strength has to be accommodated.
+
+## Running the application
+
+Requires Node 22+ and libvips' command line tools, which are the encoder
+subprocesses ADR-0007 calls for:
+
+```bash
+sudo apt-get install -y libvips-tools    # provides vips and vipsheader
+npm install
+cp .env.example .env
+npm run db:generate                      # only after changing src/db/schema.ts
+npm start                                # http://localhost:3000/admin/products
+```
+
+`npm run check` typechecks, `npm test` runs the unit tests.
+
+### What is built
+
+- **Products** — title, slug, description, price in integer paisa (ADR-0006),
+  created and listed in the admin.
+- **Image upload** — one photograph per upload, from which the whole derivative
+  ladder is generated at upload time and never on a request path (ADR-0007).
+  Derivatives are named by the sha256 of their own bytes, so they are immutable,
+  carry far-future cache headers, and need no purge path. The original is kept
+  too, so re-cutting the ladder does not mean asking the operator to re-upload.
+- **`<picture>` rendering** — AVIF then WebP then a JPEG fallback, with `srcset`,
+  `sizes` and intrinsic `width`/`height` so nothing shifts as images arrive.
+
+Two things to know about the current environment. AVIF is in the ladder but this
+machine's libvips has no AV1 encoder, so uploads produce WebP and JPEG only; the
+format set is probed at startup by attempting a real encode, and the server logs
+what it can write. And the derivative bytes are written to `var/media` by a
+filesystem driver standing in for object storage — the keys are exactly the ones
+a bucket would hold, so pointing at a real bucket and CDN is a driver swap plus
+`BUTTERLOOM_MEDIA_BASE_URL`.
+
+The ladder itself — widths 320/480/640/960/1280/1600, quality 50/72/78 — is a
+working default, not a decision. Open decision #5 wants a real photograph to
+measure against, and everything about it lives in `src/images/ladder.ts`.
 
 ## Running the old prototype
 
