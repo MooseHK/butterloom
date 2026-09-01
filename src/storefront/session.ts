@@ -56,6 +56,31 @@ export function getOrCreateSession(c: Context): Session {
 }
 
 /**
+ * The number in the header badge, and nothing else.
+ *
+ * `/` and `/p/:slug` are edge-cached (ADR-0007), so their HTML has to be byte
+ * identical for every visitor — a server-rendered count would hand one
+ * shopper's cart to the next one served from the Dhaka PoP. The count therefore
+ * rides a cookie the cacheable pages never set and only read from script, which
+ * leaves the cached bytes constant and still lets the badge survive a
+ * navigation. Deliberately readable by script, unlike the session cookie: it
+ * holds a small integer, and being read in the browser is its entire job.
+ *
+ * Every route that changes what is in a cart calls this, so the badge and the
+ * cart cannot disagree.
+ */
+export function syncCartCountCookie(c: Context, session?: Session | null): void {
+  const count = session === null ? 0 : getCartItemCount(c, session ?? undefined)
+  setCookie(c, CART_COUNT_COOKIE_NAME, String(count), {
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 30,
+  })
+}
+
+export const CART_COUNT_COOKIE_NAME = 'bl_cart_count'
+
+/**
  * Return total quantity of items currently in visitor's cart.
  */
 export function getCartItemCount(c: Context, explicitSession?: Session): number {

@@ -1,5 +1,6 @@
 import { asc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db/client.js'
+import { sortVariants } from '../lib/variants.js'
 import {
   cartItems,
   imageDerivatives,
@@ -112,13 +113,14 @@ export function findProductBySlug(slug: string): ProductDetail | null {
     .select()
     .from(productStock)
     .where(eq(productStock.productId, product.id))
-    .orderBy(asc(productStock.variantLabel))
     .all()
 
   return {
     product,
     images: images.map((image) => ({ image, derivatives: derivatives.get(image.id) ?? [] })),
-    stocks,
+    // Not ORDER BY variant_label: that is alphabetical, and alphabetical sizes
+    // read L, M, S on the product page.
+    stocks: sortVariants(stocks),
   }
 }
 
