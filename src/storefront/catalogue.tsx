@@ -3,7 +3,7 @@ import type { Context } from 'hono'
 import { formatPaisa } from '../lib/money.js'
 import { Seal, StorefrontLayout } from '../views/storefront.js'
 import { Picture } from '../views/picture.js'
-import { findProductBySlug, listCatalogue } from './queries.js'
+import { findProductBySlug, findSiteImage, listCatalogue } from './queries.js'
 import type { ImageWithDerivatives } from './queries.js'
 
 export const storefront = new Hono()
@@ -26,11 +26,19 @@ const cardSizes =
   '(min-width: 640px) 190px, (min-width: 518px) 30vw, (min-width: 354px) 45vw, calc(100vw - 40px)'
 const shotSizes = '(min-width: 640px) 510px, calc(85vw - 34px)'
 
+/**
+ * The hero bleeds to the edge of main, which is the viewport on a phone and
+ * capped at main's own 40rem above that — not the full window. Claiming 100vw
+ * on a wide screen would buy a rung of image the page never paints.
+ */
+const heroSizes = '(min-width: 640px) 640px, 100vw'
+
 /** The one line of prose on the front page, and the page's own meta description. */
 const tagline = 'Handwoven South Asian ethnic fashion, delivered across Bangladesh.'
 
 storefront.get('/', (c) => {
   const listings = listCatalogue()
+  const hero = findSiteImage('hero')
   return c.html(
     <StorefrontLayout
       title="Butterloom — South Asian ethnic fashion"
@@ -38,10 +46,33 @@ storefront.get('/', (c) => {
       canonicalPath="/"
     >
       <main>
-        <div class="brand">
-          <Seal alt="Butterloom — woven in comfort" />
-          <p>{tagline}</p>
-        </div>
+        {/*
+          The hero slot is empty until an operator fills it, and the front page
+          has to stand up either way — so the seal block is not a placeholder
+          for the photograph, it is what the page is without one.
+        */}
+        {hero ? (
+          <section class="hero">
+            <Picture
+              image={hero.image}
+              derivatives={hero.derivatives}
+              sizes={heroSizes}
+              // The largest paint on the page and the first thing above the
+              // fold: lazy-loading it would defer exactly the byte the whole
+              // edge-cached architecture exists to deliver quickly.
+              loading="eager"
+              className="hero-shot"
+            />
+            <div class="scrim">
+              <p>{tagline}</p>
+            </div>
+          </section>
+        ) : (
+          <div class="brand">
+            <Seal alt="Butterloom — woven in comfort" />
+            <p>{tagline}</p>
+          </div>
+        )}
         <div class="head">
           <h1>The collection</h1>
         </div>

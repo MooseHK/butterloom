@@ -1,11 +1,11 @@
-import { asc, count, eq, inArray } from 'drizzle-orm'
+import { asc, count, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { config } from '../config.js'
 import { db } from '../db/client.js'
-import { imageDerivatives, productImages, products } from '../db/schema.js'
-import type { ImageDerivative } from '../db/schema.js'
+import { productImages, products } from '../db/schema.js'
 import { EncoderError, UploadError, ingestProductImage } from '../images/pipeline.js'
 import { formatPaisa } from '../lib/money.js'
+import { derivativesFor } from '../storefront/queries.js'
 import { AdminLayout } from '../views/layout.js'
 import { Picture } from '../views/picture.js'
 
@@ -23,7 +23,7 @@ adminProducts.get('/', (c) => {
   )
   const error = c.req.query('error')
   return c.html(
-    <AdminLayout title="Products">
+    <AdminLayout title="Products" section="products">
       {error ? <p class="notice error">{error}</p> : null}
       <form method="post" action="/admin/products">
         <label>
@@ -109,23 +109,23 @@ adminProducts.get('/:id', (c) => {
     .where(eq(productImages.productId, id))
     .orderBy(asc(productImages.position))
     .all()
-  const derivatives = images.length
-    ? db
-        .select()
-        .from(imageDerivatives)
-        .where(inArray(imageDerivatives.imageId, images.map((i) => i.id)))
-        .all()
-    : []
-  const byImage = new Map<number, ImageDerivative[]>()
-  for (const d of derivatives) byImage.set(d.imageId, [...(byImage.get(d.imageId) ?? []), d])
+  // The storefront's grouping helper, not a second copy of it: same query,
+  // same shape, and it sorts each ladder by width where this page did not.
+  const byImage = derivativesFor(images)
 
   const error = c.req.query('error')
   const uploaded = c.req.query('uploaded')
 
   return c.html(
-    <AdminLayout title={product.title}>
+    <AdminLayout
+      title={product.title}
+      section="products"
+      back={{ href: '/admin/products', label: 'All products' }}
+    >
       <p class="muted">
-        {formatPaisa(product.pricePaisa)} · <a href={`/p/${product.slug}`}>view on the storefront</a>
+        {formatPaisa(product.pricePaisa)} · <a href={`/p/${product.slug}`} target="_blank" rel="noopener">
+          view on the storefront ↗
+        </a>
       </p>
       {error ? <p class="notice error">{error}</p> : null}
       {uploaded ? <p class="notice">Generated {uploaded} derivatives.</p> : null}

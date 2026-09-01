@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { basicAuth } from 'hono/basic-auth'
 import { logger } from 'hono/logger'
 import { adminProducts } from './admin/products.js'
+import { adminSiteImages } from './admin/siteImages.js'
 import { config } from './config.js'
 import { runMigrations } from './db/migrate.js'
 import { resolveEncoderSupport } from './images/pipeline.js'
@@ -36,6 +37,7 @@ if (adminUser && adminPassword) {
 }
 
 app.route('/admin/products', adminProducts)
+app.route('/admin/site-images', adminSiteImages)
 app.route('/media', mediaRoutes)
 app.route('/brand', brandRoutes)
 
