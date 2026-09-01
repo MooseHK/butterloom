@@ -33,6 +33,11 @@ CREATE TABLE `variant_options` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `variant_options_axis_idx` ON `variant_options` (`variant_id`,`name_slug`);--> statement-breakpoint
 CREATE INDEX `variant_options_facet_idx` ON `variant_options` (`name_slug`,`value_slug`);--> statement-breakpoint
+-- 0004 created this index as sessions_token_unique while schema.ts declares it
+-- as sessions_token_idx, so every future generate would re-emit this rename
+-- until one of them ran. Same column and same uniqueness either way.
+DROP INDEX `sessions_token_unique`;--> statement-breakpoint
+CREATE UNIQUE INDEX `sessions_token_idx` ON `sessions` (`token`);--> statement-breakpoint
 -- drizzle-kit emits this REFERENCES clause without the ON DELETE the schema
 -- declares, which would leave deleting a category a constraint error rather
 -- than the unshelving products.category_id is documented to be. Corrected by

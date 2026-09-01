@@ -1,5 +1,21 @@
+import { count, inArray } from 'drizzle-orm'
 import { raw } from 'hono/html'
 import type { PropsWithChildren } from 'hono/jsx'
+import { db } from '../db/client.js'
+import { orders } from '../db/schema.js'
+
+export function countActiveOrders(): number {
+  try {
+    const [row] = db
+      .select({ n: count() })
+      .from(orders)
+      .where(inArray(orders.fulfilmentState, ['placed', 'packed', 'handed_over']))
+      .all()
+    return row?.n ?? 0
+  } catch {
+    return 0
+  }
+}
 
 /**
  * ADR-0007: no client framework. The only stylesheet is inline because the
@@ -10,11 +26,13 @@ export function AdminLayout(
   props: PropsWithChildren<{
     title: string
     /** Which nav item is the current one. Omitted on pages that are in neither. */
-    section?: 'home' | 'products' | 'categories' | 'site-images'
+    section?: 'home' | 'products' | 'categories' | 'site-images' | 'orders'
     /** A way back up one level, for pages reached from a list. */
     back?: { href: string; label: string }
   }>,
 ) {
+  const activeOrders = countActiveOrders()
+
   return (
     <>
       {/* Same reason as the storefront: without it the page is in quirks mode. */}
@@ -46,6 +64,12 @@ export function AdminLayout(
             <nav>
               <a href="/admin" aria-current={props.section === 'home' ? 'page' : undefined}>
                 Overview
+              </a>
+              <a
+                href="/admin/orders"
+                aria-current={props.section === 'orders' ? 'page' : undefined}
+              >
+                Orders{activeOrders > 0 ? <span class="badge">{activeOrders}</span> : null}
               </a>
               <a
                 href="/admin/products"
@@ -89,140 +113,126 @@ export function AdminLayout(
   )
 }
 
-/*
-  Written narrow first. ADR-0003 puts a single operator behind this panel, and
-  that operator is as often standing in a stockroom holding a phone as sitting
-  at a desk, so 360px is what the sheet states plainly and the wider layouts are
-  the exceptions added back. Two widths do that: 34rem, already the measure a
-  single-product form takes, and 40rem, where the wordmark and all five sections
-  fit on one line again.
-
-  It stays a dense tool at every width. Someone entering twenty products wants
-  to see rows; the only things that grew are the ones a thumb has to hit.
-*/
 const css = `
   :root { color-scheme: light dark; }
-  * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; }
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px;
-    padding: 10px 14px; border-bottom: 1px solid #8883; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; min-width: 0; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px;
+    padding: 12px 20px; border-bottom: 1px solid #8883; }
   header a { text-decoration: none; color: inherit; }
   header .wm { font-weight: 600; }
-  /* Five sections are about 400px of text. Wrapping them costs two 44px bands
-     of chrome before the page begins, so instead they take one row that
-     scrolls, bled to the viewport edge — a half-cut item reads as "there is
-     more this way", where one cut at a 14px margin reads as a bug. */
-  header nav { display: flex; flex: 1 0 100%; gap: 16px; margin: 0 -14px;
-    padding: 0 14px; overflow-x: auto; overscroll-behavior-x: contain; }
-  header nav a { display: flex; align-items: center; min-height: 44px;
-    white-space: nowrap; border-bottom: 2px solid transparent; color: #8889; }
+  header nav { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  header nav a { padding-bottom: 2px; border-bottom: 2px solid transparent; color: #8889; }
   header nav a:hover { color: inherit; }
   /* The current section, named for assistive tech and shown to everyone else.
      Colour alone would not carry it. */
   header nav a[aria-current="page"] { color: inherit; font-weight: 600;
     border-bottom-color: currentColor; }
   header nav a.out { margin-left: auto; }
-  .back { display: inline-flex; align-items: center; min-height: 44px;
-    margin: -6px 0 -10px; font-size: 13px; color: #8889; text-decoration: none; }
+  .back { display: inline-block; margin: 4px 0 -4px; font-size: 13px; color: #8889;
+    text-decoration: none; }
   .back:hover { color: inherit; }
-  main { max-width: 60rem; margin: 0 auto; padding: 14px 14px 32px; }
+  main { max-width: 60rem; margin: 0 auto; padding: 20px; min-width: 0; }
   h1 { font-size: 1.4rem; }
-  form { display: grid; gap: 12px; max-width: 34rem; margin: 16px 0 28px; }
-  label { display: grid; gap: 4px; font-weight: 600; }
-  /* 16px is not a taste call. iOS Safari zooms the page in whenever a control
-     under that size takes focus, and it does not zoom back out again — the
-     operator is left panning a magnified page for the rest of the session. The
-     desktop keeps the same size because a second one buys nothing. */
-  input, select, textarea, button { font: inherit; font-size: 16px;
-    min-height: 44px; padding: 10px; border: 1px solid #8886; border-radius: 6px;
-    background: transparent; color: inherit; }
-  button { cursor: pointer; font-weight: 600; padding: 10px 16px; }
-  /* Stepping a price a paisa at a time is not worth a 12px target, and every
-     number field here already asks for the numeric keypad with inputmode. */
-  input[type=number] { -webkit-appearance: textfield; appearance: textfield; }
-  /* Tapping anywhere in a file input opens the picker, so the 44px above is the
-     real target; this is only so the control stops looking like the one thing
-     on the page the sheet forgot. */
-  input[type=file] { padding: 6px; }
-  input[type=file]::file-selector-button { min-height: 32px; margin-right: 10px;
-    padding: 0 12px; border: 1px solid #8886; border-radius: 5px;
-    background: #8881; color: inherit; font: inherit; font-size: 15px;
-    cursor: pointer; }
-  /* One ring for everything, in currentColor so it inverts with the scheme
-     rather than needing a colour that survives both. The UA default differs per
-     control and per browser and is easy to lose against the quiet nav ink,
-     which is why a focused nav item also takes the full-contrast colour. */
-  a:focus-visible, button:focus-visible, input:focus-visible,
-  select:focus-visible, textarea:focus-visible {
-    outline: 2px solid currentColor; outline-offset: 2px; }
-  header nav a:focus-visible { color: inherit; }
-  /* Inset: both of these sit inside a scroll container, which clips a ring
-     drawn outside the box. */
-  header nav a:focus-visible, td a:focus-visible { outline-offset: -2px; }
-  /* Six columns do not cross a 360px screen, so the table is its own scroller.
-     A wrapper element is the usual way to do that, but the tables live in
-     src/admin and this sheet does not own that markup — hence display: block on
-     the table itself, which costs it its role in the accessibility tree on some
-     screen readers. Below 34rem that is the lesser harm; above it, it is a
-     table again. Stacked cards would read better still on a phone, but they
-     need a data-label on every td, which is that same markup change. */
-  table { display: block; width: 100%; overflow-x: auto;
-    overscroll-behavior-x: contain; border-collapse: collapse; }
-  th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid #8883;
-    white-space: nowrap; }
-  /* The row is 44px but the link inside it was only its own 22px line box, so
-     it takes the whole cell back. */
-  td a { display: block; margin: -11px -12px; padding: 11px 12px; }
-  /* A fixed 180px thumbnail plus its gap overflows 360px by a hair, which is
-     the worst of both — one per row with half the width wasted. Flexible down
-     to 150 puts two up on a phone and leaves the desktop row where it was. */
+  form { display: grid; gap: 12px; max-width: 34rem; margin: 16px 0 28px; width: 100%; }
+  label { display: grid; gap: 4px; font-weight: 600; min-width: 0; }
+  input, textarea, select, button { font: inherit; padding: 8px; border: 1px solid #8886; border-radius: 6px; background: transparent; color: inherit; max-width: 100%; box-sizing: border-box; }
+  input, textarea, select { width: 100%; min-width: 0; }
+  button { cursor: pointer; font-weight: 600; }
+  button.secondary { border-color: #8886; }
+  button.danger { border-color: #d33; color: #d33; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; margin: 16px 0; }
+  table { border-collapse: collapse; width: 100%; min-width: 480px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #8883; }
   .gallery { display: flex; flex-wrap: wrap; gap: 14px; list-style: none; padding: 0; }
-  .gallery li { flex: 1 1 150px; max-width: 180px; }
-  .gallery img { width: 100%; height: auto; border-radius: 6px; display: block; }
+  .gallery img { width: 180px; max-width: 100%; height: auto; border-radius: 6px; display: block; }
   /* The bulk form is a table of rows, not a single column of fields, so it
      takes the whole measure rather than the 34rem a one-product form wants. */
-  form.bulk { max-width: none; }
-  .row { display: grid; gap: 10px 14px;
-    padding: 12px; border: 1px solid #8883; border-radius: 8px; }
+  form.bulk { max-width: none; width: 100%; }
+  .row { display: grid; grid-template-columns: 2fr 1fr; gap: 10px 14px;
+    padding: 12px; border: 1px solid #8883; border-radius: 8px; min-width: 0; }
   .row + .row { margin-top: 10px; }
   .row .span { grid-column: 1 / -1; }
   .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; }
-  /* Sharing the width rather than sitting thumb-sized against the left edge.
-     9rem is small enough that a pair still fits on one line at 360px. */
-  .actions button { flex: 1 1 9rem; }
   .queue { display: grid; gap: 8px; margin: 0 0 20px; padding: 0; list-style: none; }
-  .queue li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .queue li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; word-break: break-word; }
   .queue form { margin: 0; }
   .cards { display: grid; gap: 14px; padding: 0; list-style: none;
-    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
   .cards li { padding: 14px 16px; border: 1px solid #8883; border-radius: 8px; }
   .cards h2 { margin: 0 0 4px; font-size: 1.1rem; }
-  /* The heading is the only way into a section from the overview, so it is the
-     heading that carries the target. */
-  .cards h2 a { display: inline-flex; align-items: center; min-height: 44px; }
   .cards p { margin: 0 0 6px; }
   .fail { color: #d33; }
-  .notice { padding: 10px 12px; border-radius: 6px; border: 1px solid #8886; }
+  .notice { padding: 10px 12px; border-radius: 6px; border: 1px solid #8886; overflow-wrap: anywhere; word-break: break-word; }
   .notice.error { border-color: #d33; }
   .muted { color: #8889; }
+  .badge { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: #8883; vertical-align: middle; margin-left: 6px; }
+  .tabs { display: flex; gap: 12px; border-bottom: 1px solid #8883; margin: 16px 0 24px; }
+  .tab { padding: 8px 14px; text-decoration: none; color: #8889; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab:hover { color: inherit; }
+  .tab.active, .tab[aria-current="true"] { color: inherit; font-weight: 600; border-bottom-color: currentColor; }
+  .order-card { border: 1px solid #8883; border-radius: 8px; padding: 16px; margin: 14px 0; }
+  .order-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .order-meta { font-size: 13px; color: #8889; margin: 0 0 10px; }
+  .order-details { margin: 12px 0; font-size: 14px; }
+  .order-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .order-actions form { margin: 0; display: inline-block; max-width: none; width: auto; }
+  .chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+  .chip.placed { background: #e8a83833; color: #d97706; }
+  .chip.packed { background: #3b82f633; color: #2563eb; }
+  .chip.handed_over { background: #8b5cf633; color: #7c3aed; }
+  .chip.delivered { background: #22c55e33; color: #16a34a; }
+  .chip.returned { background: #ef444433; color: #dc2626; }
+  .chip.cancelled { background: #6b728033; color: #4b5563; }
+  dialog { border: 1px solid #8886; border-radius: 8px; padding: 20px; max-width: 36rem; width: 90%; background: #fff; color: #111; }
+  @media (prefers-color-scheme: dark) { dialog { background: #1c1c1c; color: #eee; } }
+  dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+  .dialog-close { float: right; margin-top: -6px; font-size: 20px; border: none; background: none; cursor: pointer; color: inherit; }
+  .timeline { list-style: none; padding: 0; margin: 12px 0; }
+  .timeline li { padding: 6px 0; border-bottom: 1px solid #8882; font-size: 13px; }
+  .inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+  .inline-form input { width: auto; }
 
-  @media (min-width: 34rem) {
-    main { padding: 20px; }
-    /* Title beside price only once there is room for both: at 360px the 2fr
-       column is 200px and the 1fr is 100, and a squeezed pair of fields is
-       worse to type into than a stack of full-width ones. */
-    .row { grid-template-columns: 2fr 1fr; }
-    .actions button { flex: none; }
-    /* Wide enough for the columns without a scroller, so the table goes back to
-       being a table, semantics included. */
-    table { display: table; }
-    th, td { white-space: normal; }
+  @media (max-width: 640px) {
+    main { padding: 16px 14px; }
+    header { padding: 12px 14px; }
+    .row { grid-template-columns: 1fr; }
+    .row .span { grid-column: auto; }
   }
-  @media (min-width: 40rem) {
-    /* The wordmark and all five sections fit on one line again, which is the
-       header this panel has always had. The nav keeps its overflow rule: a
-       sixth section would scroll rather than open a second band of chrome. */
-    header { padding: 10px 20px; }
-    header nav { flex: 0 1 auto; margin: 0; padding: 0; }
+
+  /*
+    Below here is not styling, it is the panel being usable on the phone ADR-0003
+    puts it in front of — an operator standing in a stockroom, not sitting at a
+    desk. None of it changes how the admin looks on a desktop.
+
+    16px is the load-bearing one. iOS Safari zooms the page in whenever a control
+    under that size takes focus and does not zoom back out, so the operator is
+    left panning a magnified page for the rest of the session. The rest is the
+    44px target floor and a focus ring on everything that takes focus, several of
+    which had none — an accessibility failure independent of screen size.
+  */
+  input, textarea, select, button { font-size: 16px; min-height: 44px; padding: 10px; }
+  button { padding: 10px 16px; }
+  header nav a { display: inline-flex; align-items: center; min-height: 44px; }
+  .back { display: inline-flex; align-items: center; min-height: 44px; }
+  .cards h2 a { display: inline-flex; align-items: center; min-height: 44px; }
+  /* The row is 44px but the link inside it was only its own line box, so it
+     takes the whole cell back. */
+  td a { display: block; margin: -6px -10px; padding: 6px 10px; min-height: 32px; }
+  /* currentColor rather than a fixed colour, so one rule serves both schemes. */
+  a:focus-visible, button:focus-visible, input:focus-visible,
+  select:focus-visible, textarea:focus-visible, summary:focus-visible {
+    outline: 2px solid currentColor; outline-offset: 2px; }
+  /* Inset: this one sits inside a scroll container, which clips a ring drawn
+     outside the box. */
+  .table-wrap a:focus-visible { outline-offset: -2px; }
+  input[type=file] { padding: 6px; }
+  input[type=file]::file-selector-button { min-height: 32px; margin-right: 10px;
+    padding: 0 12px; border: 1px solid #8886; border-radius: 5px;
+    background: #8881; color: inherit; font: inherit; font-size: 15px; cursor: pointer; }
+  /* Buttons share the width on a phone rather than sitting thumb-sized against
+     the left edge; 9rem still fits a pair on one line at 360px. */
+  @media (max-width: 640px) {
+    .actions button, .order-actions button { flex: 1 1 9rem; }
   }
 `

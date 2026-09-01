@@ -286,3 +286,124 @@ export type PendingImage = typeof pendingImages.$inferSelect
 export type Category = typeof categories.$inferSelect
 export type ProductVariant = typeof productVariants.$inferSelect
 export type VariantOption = typeof variantOptions.$inferSelect
+
+/**
+ * Anonymous browser sessions for cart persistence.
+ */
+export const sessions = sqliteTable(
+  'sessions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    token: text('token').notNull(),
+    createdAt: integer('created_at').notNull().default(now),
+    lastSeenAt: integer('last_seen_at').notNull().default(now),
+  },
+  (t) => [uniqueIndex('sessions_token_idx').on(t.token)],
+)
+
+
+/**
+ * Items in a session's cart.
+ *
+ * A line holds a variant, not a product: "one of these" is not orderable when a
+ * product comes in three sizes, and CONTEXT.md has said a Cart line is a Variant
+ * and a quantity since before there was a cart. The product id rides along
+ * because every read of this table wants the title beside the label, and paying
+ * for that with a second join on a page that is already uncached is worse than
+ * carrying the column.
+ */
+export const cartItems = sqliteTable(
+  'cart_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    sessionId: integer('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    productId: integer('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    variantId: integer('variant_id')
+      .notNull()
+      .references(() => productVariants.id, { onDelete: 'cascade' }),
+    quantity: integer('quantity').notNull().default(1),
+    createdAt: integer('created_at').notNull().default(now),
+  },
+  (t) => [
+    // One line per variant per session: adding the same variant twice raises the
+    // quantity on the line that is there rather than making a second one.
+    uniqueIndex('cart_items_session_variant_idx').on(t.sessionId, t.variantId),
+  ],
+)
+
+export const fulfilmentStates = [
+  'placed',
+  'packed',
+  'handed_over',
+  'delivered',
+  'returned',
+  'cancelled',
+] as const
+export type FulfilmentState = (typeof fulfilmentStates)[number]
+
+/**
+ * The core order record.
+ */
+export const orders = sqliteTable(
+  'orders',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    customerName: text('customer_name').notNull(),
+    customerPhone: text('customer_phone').notNull(),
+    deliveryAddress: text('delivery_address').notNull(),
+    deliveryNotes: text('delivery_notes').notNull().default(''),
+    totalPaisa: integer('total_paisa').notNull(),
+    fulfilmentState: text('fulfilment_state', { enum: fulfilmentStates })
+      .notNull()
+      .default('placed'),
+    paymentTier: text('payment_tier').notNull().default('cod'),
+    createdAt: integer('created_at').notNull().default(now),
+    updatedAt: integer('updated_at').notNull().default(now),
+  },
+)
+
+/**
+ * Snapshot of what was ordered (decoupled from product changes).
+ */
+export const orderItems = sqliteTable(
+  'order_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    orderId: integer('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    productId: integer('product_id').references(() => products.id, { onDelete: 'set null' }),
+    productTitle: text('product_title').notNull(),
+    variantLabel: text('variant_label').notNull().default(''),
+    pricePaisa: integer('price_paisa').notNull(),
+    quantity: integer('quantity').notNull().default(1),
+  },
+  (t) => [index('order_items_order_idx').on(t.orderId)],
+)
+
+/**
+ * Audit trail of every state change.
+ */
+export const orderEvents = sqliteTable(
+  'order_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    orderId: integer('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    fromState: text('from_state', { enum: fulfilmentStates }),
+    toState: text('to_state', { enum: fulfilmentStates }).notNull(),
+    createdAt: integer('created_at').notNull().default(now),
+  },
+  (t) => [index('order_events_order_idx').on(t.orderId)],
+)
+
+export type Session = typeof sessions.$inferSelect
+export type CartItem = typeof cartItems.$inferSelect
+export type Order = typeof orders.$inferSelect
+export type OrderItem = typeof orderItems.$inferSelect
+export type OrderEvent = typeof orderEvents.$inferSelect

@@ -1,9 +1,10 @@
-import { and, asc, count, eq } from 'drizzle-orm'
+import { and, asc, count, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { config } from '../config.js'
 import { db } from '../db/client.js'
 import {
   categories,
+  orders,
   pendingImages,
   productImages,
   productVariants,
@@ -45,7 +46,7 @@ export const adminProducts = new Hono()
  */
 
 /** Rows rendered without any script; enough for a normal restock. */
-const initialRows = 3
+const initialRows = 1
 /** The same, for the variants of one product: two sizes of one colour is typical. */
 const initialVariantRows = 3
 /**
@@ -172,6 +173,21 @@ adminProducts.get('/', (c) => {
       .all()
       .map((r) => [r.productId, r.n] as const),
   )
+  const stockCounts = new Map(
+    db
+      .select({
+        productId: productVariants.productId,
+        total: sql<number>`coalesce(sum(${productVariants.stockQty}), 0)`,
+        variantCount: count(),
+      })
+      .from(productVariants)
+      .groupBy(productVariants.productId)
+      .all()
+      .map(
+        (r) =>
+          [r.productId, { total: Number(r.total), variantCount: Number(r.variantCount) }] as const,
+      ),
+  )
   const pending = pendingByProduct()
   const shelves = listCategories().map((c) => c.category)
   const shelfNames = new Map(shelves.map((c) => [c.id, c.name] as const))
@@ -216,45 +232,59 @@ adminProducts.get('/', (c) => {
       </form>
       <script dangerouslySetInnerHTML={{ __html: addRowScript(initialRows, maxRows) }} />
 
-      <table>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Slug</th>
-            <th>Category</th>
-            <th>Price</th>
-            <th>Variants</th>
-            <th>Images</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((p) => {
-            const tally = pending.get(p.id)
-            return (
-              <tr>
-                <td>
-                  <a href={`/admin/products/${p.id}`}>{p.title}</a>
-                </td>
-                <td class="muted">{p.slug}</td>
-                <td>
-                  {p.categoryId === null ? (
-                    <span class="muted">Unshelved</span>
-                  ) : (
-                    (shelfNames.get(p.categoryId) ?? <span class="muted">Unshelved</span>)
-                  )}
-                </td>
-                <td>{formatPaisa(p.pricePaisa)}</td>
-                <td>{variants.get(p.id) ?? 0}</td>
-                <td>
-                  {imageCounts.get(p.id) ?? 0}
-                  {tally?.queued ? <span class="muted"> · {tally.queued} encoding</span> : null}
-                  {tally?.failed ? <span class="fail"> · {tally.failed} failed</span> : null}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Slug</th>
+              <th>Category</th>
+              <th>Price</th>
+              <th>Stock</th>
+              <th>Images</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p) => {
+              const tally = pending.get(p.id)
+              const stock = stockCounts.get(p.id)
+              return (
+                <tr>
+                  <td>
+                    <a href={`/admin/products/${p.id}`}>{p.title}</a>
+                  </td>
+                  <td class="muted">{p.slug}</td>
+                  <td>
+                    {p.categoryId === null ? (
+                      <span class="muted">Unshelved</span>
+                    ) : (
+                      (shelfNames.get(p.categoryId) ?? <span class="muted">Unshelved</span>)
+                    )}
+                  </td>
+                  <td>{formatPaisa(p.pricePaisa)}</td>
+                  <td>
+                    {stock && stock.total > 0 ? (
+                      <span>
+                        {stock.total} in stock
+                        {stock.variantCount > 1 ? (
+                          <span class="muted"> ({stock.variantCount} variants)</span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span class="fail">0 in stock</span>
+                    )}
+                  </td>
+                  <td>
+                    {imageCounts.get(p.id) ?? 0}
+                    {tally?.queued ? <span class="muted"> · {tally.queued} encoding</span> : null}
+                    {tally?.failed ? <span class="fail"> · {tally.failed} failed</span> : null}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
       {rows.length === 0 ? <p class="muted">No products yet.</p> : null}
     </AdminLayout>,
   )
@@ -332,6 +362,13 @@ adminProducts.post('/', async (c) => {
           .returning({ id: products.id })
           .all()
         if (!row) throw new Error('insert returned no row')
+        // Every product gets the one variant that makes it orderable at all —
+        // an order line holds a variant, so a product with none cannot be put
+        // in a cart. Zero, not main's ten: a product nobody has counted yet has
+        // no stock, and inventing some is a claim the shop cannot honour.
+        tx.insert(productVariants)
+          .values({ productId: row.id, label: 'Standard', stockQty: 0 })
+          .run()
         return { id: row.id, draft }
       }),
     )
@@ -339,6 +376,7 @@ adminProducts.post('/', async (c) => {
     console.error('[admin] bulk insert', err)
     return fail('Could not save these products. See the server log.')
   }
+
 
   let queued = 0
   for (const { id, draft } of created) {
@@ -374,6 +412,10 @@ adminProducts.get('/:id', (c) => {
   const [product] = db.select().from(products).where(eq(products.id, id)).all()
   if (!product) return c.notFound()
 
+  if (variantCounts([id]).get(id) === undefined) {
+    db.insert(productVariants).values({ productId: id, label: 'Standard', stockQty: 0 }).run()
+  }
+
   const images = db
     .select()
     .from(productImages)
@@ -392,8 +434,10 @@ adminProducts.get('/:id', (c) => {
   const axisNames = facetsFor(null).map((f) => f.name)
 
   const error = c.req.query('error')
-  const saved = c.req.query('saved')
   const uploaded = Number(c.req.query('uploaded') ?? 0)
+  // Two names for one banner: this page was reached from routes on both sides
+  // of a merge, and they do not agree on the parameter.
+  const notice = c.req.query('notice') ?? c.req.query('saved')
 
   return c.html(
     <AdminLayout
@@ -408,7 +452,7 @@ adminProducts.get('/:id', (c) => {
         </a>
       </p>
       {error ? <p class="notice error">{error}</p> : null}
-      {saved ? <p class="notice">{saved}</p> : null}
+      {notice ? <p class="notice">{notice}</p> : null}
       {uploaded > 0 ? (
         <p class="notice">
           {uploaded} {uploaded === 1 ? 'photograph' : 'photographs'} accepted — encoding in the
@@ -552,6 +596,11 @@ adminProducts.get('/:id', (c) => {
                 {image.width}×{image.height} · {list.length} derivatives ·{' '}
                 {Math.round(list.reduce((n, d) => n + d.byteSize, 0) / 1024)} KB total
               </p>
+              <form method="post" action={`/admin/products/${id}/images/${image.id}/delete`}>
+                <button type="submit" onclick="return confirm('Remove this image?')">
+                  Remove
+                </button>
+              </form>
             </li>
           )
         })}
@@ -776,3 +825,20 @@ adminProducts.post('/:id/variants/:variantId/delete', (c) => {
     303,
   )
 })
+
+/**
+ * Remove a finished image from a product's gallery. The cascade on
+ * image_derivatives handles the DB side; the derivative blobs stay in storage
+ * because they are content-addressed and immutable (ADR-0007) — a URL that has
+ * been served keeps resolving, and the same bytes may belong to another image.
+ */
+adminProducts.post('/:id/images/:imageId/delete', (c) => {
+  const id = Number(c.req.param('id'))
+  const imageId = Number(c.req.param('imageId'))
+  db.delete(productImages)
+    .where(and(eq(productImages.id, imageId), eq(productImages.productId, id)))
+    .run()
+  return c.redirect(`/admin/products/${id}`, 303)
+})
+
+

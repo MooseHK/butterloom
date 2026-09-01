@@ -33,8 +33,22 @@
     {
       "idx": 4,
       "version": "6",
-      "when": 1788275079979,
-      "tag": "0004_categories_and_variants",
+      "when": 1788286938777,
+      "tag": "0004_daffy_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788288816843,
+      "tag": "0005_categories_and_variants",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788288851954,
+      "tag": "0006_cart_holds_a_variant",
       "breakpoints": true
     }
   ]

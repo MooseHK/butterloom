@@ -17,7 +17,12 @@ import { brandMarkUrl } from '../media.js'
  * routes it points at, not before.
  */
 export function StorefrontLayout(
-  props: PropsWithChildren<{ title: string; description?: string; canonicalPath: string }>,
+  props: PropsWithChildren<{
+    title: string
+    description?: string
+    canonicalPath: string
+    cartCount?: number
+  }>,
 ) {
   return (
     <>
@@ -53,13 +58,30 @@ export function StorefrontLayout(
             commit us to, and it fits on one line at 360px. How you pay is said
             on the product page, at the point where it is a decision.
           */}
-          <div class="promo">Dispatched daily</div>
+          <div class="promo">
+            Woven in comfort
+          </div>
           <header class="site">
+            <div class="header-left" />
             <a class="wm" href="/">
               <i class="dot" />
               <b>Butterloom</b>
               <i class="dot" />
             </a>
+            <div class="header-right">
+              <a class="cart-btn" href="/cart" aria-label="Shopping Cart">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <path d="M16 10a4 4 0 0 1-8 0"></path>
+                </svg>
+                {props.cartCount && props.cartCount > 0 ? (
+                  <span class="cart-badge" id="cart-badge">{props.cartCount}</span>
+                ) : (
+                  <span class="cart-badge" id="cart-badge" style="display:none">0</span>
+                )}
+              </a>
+            </div>
           </header>
           {props.children}
           <footer class="site">
@@ -144,8 +166,12 @@ const css = `
     text-align: center; background: var(--strip); color: var(--strip-ink);
     font: 400 9.5px/1 system-ui, -apple-system, sans-serif;
     letter-spacing: 0.17em; text-transform: uppercase; }
-  header.site { display: flex; align-items: center; justify-content: center;
-    height: 58px; padding: 0 14px; border-bottom: 1px solid var(--hairline); }
+  header.site { display: flex; align-items: center; justify-content: space-between;
+    height: 58px; padding: 0 16px; border-bottom: 1px solid var(--hairline); position: relative; }
+  .header-left { width: 44px; }
+  .header-right { width: 44px; display: flex; justify-content: flex-end; }
+  .cart-btn { position: relative; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--ink); }
+  .cart-badge { position: absolute; top: 4px; right: 2px; font: 600 10px/1 system-ui, sans-serif; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--ink); color: var(--paper); display: flex; align-items: center; justify-content: center; }
   .wm { display: flex; align-items: center; gap: 9px; min-height: 44px; }
   .wm b { font: 400 14px/1 ui-serif, Georgia, "Times New Roman", serif;
     letter-spacing: 0.26em; text-transform: uppercase; }
@@ -247,13 +273,6 @@ const css = `
     overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; }
   .rail .card { flex: 0 0 168px; scroll-snap-align: start; }
 
-  .btn { display: flex; align-items: center; justify-content: center;
-    min-height: 52px; padding: 0 22px; border: 1px solid var(--ink); border-radius: 2px;
-    background: var(--ink); color: var(--paper); cursor: pointer;
-    font: 600 11.5px/1 system-ui, -apple-system, sans-serif;
-    letter-spacing: 0.16em; text-transform: uppercase; }
-  /* The link reset above hands hover --secondary, which on ink is unreadable. */
-  .btn:hover { color: var(--paper); background: var(--secondary); border-color: var(--secondary); }
 
   /* Filter and sort are a GET form in a <details>. ADR-0007 rules out client
      script, and collapsing a panel on a phone is the one thing HTML will do
@@ -310,4 +329,62 @@ const css = `
   .axes dt { font: 400 10px/1 system-ui, -apple-system, sans-serif;
     letter-spacing: 0.15em; text-transform: uppercase; color: var(--tertiary); }
   .axes dd { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; }
+  /* Buttons & Action elements */
+  .btn { display: inline-flex; align-items: center; justify-content: center; padding: 14px 24px;
+    background: var(--ink); color: var(--paper); border: 1px solid var(--ink); border-radius: 2px;
+    font: 500 13px/1 system-ui, -apple-system, sans-serif; letter-spacing: 0.12em; text-transform: uppercase;
+    cursor: pointer; text-decoration: none; width: 100%; box-sizing: border-box; transition: opacity 0.15s ease; }
+  .btn:hover { opacity: 0.88; color: var(--paper); }
+  .btn.secondary { background: transparent; color: var(--ink); border-color: var(--hairline); }
+  .btn.secondary:hover { border-color: var(--ink); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Variants */
+  .variant-group { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; }
+  .variant-label { font: 500 11.5px/1 system-ui, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: var(--secondary); }
+  .variant-options { display: flex; flex-wrap: wrap; gap: 8px; }
+  .variant-radio { display: none; }
+  .variant-chip { display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px;
+    border: 1px solid var(--hairline); border-radius: 2px; font-size: 13.5px; cursor: pointer; user-select: none;
+    transition: border-color 0.15s, background 0.15s; }
+  .variant-radio:checked + .variant-chip { border-color: var(--ink); background: var(--ink); color: var(--paper); font-weight: 500; }
+  .variant-chip.disabled { opacity: 0.35; text-decoration: line-through; cursor: not-allowed; }
+
+  /* Cart List & Checkout */
+  .cart-list { list-style: none; padding: 0; margin: 20px 0; border-top: 1px solid var(--hairline); }
+  .cart-item { display: grid; grid-template-columns: 72px 1fr auto; gap: 16px; padding: 18px 0;
+    border-bottom: 1px solid var(--hairline); align-items: start; }
+  .cart-thumb { width: 72px; aspect-ratio: 4/5; border-radius: 2px; overflow: hidden; background: var(--shot); }
+  .cart-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .cart-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .cart-title { margin: 0; font-size: 16px; font-weight: 400; line-height: 1.3; }
+  .cart-title a { text-decoration: none; }
+  .cart-variant { margin: 0; font-size: 13px; color: var(--secondary); }
+  .cart-price { margin: 2px 0 0; font-size: 14px; }
+  .cart-qty-form { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .cart-qty-select { padding: 4px 8px; border: 1px solid var(--hairline); border-radius: 2px;
+    background: var(--paper); color: var(--ink); font: inherit; font-size: 13px; }
+  .cart-remove-btn { background: none; border: none; color: var(--tertiary); font-size: 12px;
+    cursor: pointer; text-decoration: underline; padding: 0; }
+  .cart-remove-btn:hover { color: var(--ink); }
+  .cart-total-box { margin: 24px 0; padding: 20px; background: var(--shot); border-radius: 2px;
+    display: flex; flex-direction: column; gap: 12px; }
+  .cart-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; }
+  .cart-row.grand { font-size: 18px; font-weight: 500; border-top: 1px solid var(--hairline);
+    padding-top: 12px; margin-top: 4px; }
+
+  /* Form Inputs */
+  .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .form-label { font: 500 11.5px/1 system-ui, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); }
+  .form-input, .form-textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--hairline);
+    border-radius: 2px; background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; box-sizing: border-box; }
+  .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--ink); }
+  .checkout-grid { display: grid; grid-template-columns: 1fr; gap: 28px; margin: 24px 0; }
+  .order-summary-box { padding: 20px; background: var(--shot); border-radius: 2px; }
+  .order-summary-item { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; margin-bottom: 10px; }
+  .order-confirm-badge { display: inline-flex; align-items: center; justify-content: center;
+    width: 48px; height: 48px; border-radius: 50%; background: var(--ink); color: var(--paper); margin-bottom: 12px; }
+  .notice-banner { padding: 12px 16px; background: var(--shot); border-left: 3px solid var(--ink); margin: 16px 0; font-size: 14px; }
+  .notice-banner.error { border-left-color: #d33; }
 `
+

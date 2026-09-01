@@ -1,7 +1,14 @@
-import { count } from 'drizzle-orm'
+import { count, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../db/client.js'
-import { categories, productImages, products, siteImageSlots, siteImages } from '../db/schema.js'
+import {
+  categories,
+  orders,
+  productImages,
+  products,
+  siteImageSlots,
+  siteImages,
+} from '../db/schema.js'
 import { countPending } from '../images/queue.js'
 import { AdminLayout } from '../views/layout.js'
 
@@ -19,11 +26,30 @@ adminHome.get('/', (c) => {
   const [imageCount] = db.select({ n: count() }).from(productImages).all()
   const [categoryCount] = db.select({ n: count() }).from(categories).all()
   const [filledSlots] = db.select({ n: count() }).from(siteImages).all()
+  const [activeOrders] = db
+    .select({ n: count() })
+    .from(orders)
+    .where(inArray(orders.fulfilmentState, ['placed', 'packed', 'handed_over']))
+    .all()
+  const [placedCount] = db
+    .select({ n: count() })
+    .from(orders)
+    .where(eq(orders.fulfilmentState, 'placed'))
+    .all()
   const queued = countPending()
 
   return c.html(
     <AdminLayout title="Butterloom admin" section="home">
       <ul class="cards">
+        <li>
+          <h2>
+            <a href="/admin/orders">Orders</a>
+          </h2>
+          <p class="muted">
+            {activeOrders?.n ?? 0} active · {placedCount?.n ?? 0} awaiting packing
+          </p>
+          <p>Process placed orders through packing and courier handover to delivery or return.</p>
+        </li>
         <li>
           <h2>
             <a href="/admin/products">Products</a>
@@ -32,7 +58,7 @@ adminHome.get('/', (c) => {
             {productCount?.n ?? 0} in the catalogue · {imageCount?.n ?? 0} photographs
             {queued > 0 ? ` · ${queued} encoding` : ''}
           </p>
-          <p>Title, price, description and photographs. Add a batch of them in one form.</p>
+          <p>Title, price, stock inventory, description and photographs. Add a batch of them in one form.</p>
         </li>
         <li>
           <h2>
@@ -56,3 +82,4 @@ adminHome.get('/', (c) => {
     </AdminLayout>,
   )
 })
+

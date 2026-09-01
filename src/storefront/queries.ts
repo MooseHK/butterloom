@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, exists, inArray, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { db } from '../db/client.js'
 import {
+  cartItems,
   categories,
   imageDerivatives,
   productImages,
@@ -11,6 +12,7 @@ import {
   variantOptions,
 } from '../db/schema.js'
 import type {
+  CartItem,
   Category,
   ImageDerivative,
   Product,
@@ -361,6 +363,12 @@ export function variantCounts(productIds: number[]): Map<number, number> {
 export interface ProductDetail {
   product: Product
   images: ImageWithDerivatives[]
+  /**
+   * Every configuration of this product, each with its axes. The product page
+   * needs both readings: the axes collapsed into "Colour: Indigo, Ecru" as
+   * type, and the variants themselves as the things add-to-cart can name.
+   */
+  variants: VariantWithOptions[]
 }
 
 export function findProductBySlug(slug: string): ProductDetail | null {
@@ -378,7 +386,57 @@ export function findProductBySlug(slug: string): ProductDetail | null {
   return {
     product,
     images: images.map((image) => ({ image, derivatives: derivatives.get(image.id) ?? [] })),
+    // Position order, not alphabetical: the operator decided S came before M.
+    variants: variantsForProduct(product.id),
   }
+}
+
+export interface CartItemWithDetails {
+  cartItem: CartItem
+  product: Product
+  variant: ProductVariant
+  cover: ImageWithDerivatives | null
+}
+
+export function getCartItemsForSession(sessionId: number): CartItemWithDetails[] {
+  const items = db
+    .select({
+      cartItem: cartItems,
+      product: products,
+      variant: productVariants,
+    })
+    .from(cartItems)
+    .innerJoin(products, eq(cartItems.productId, products.id))
+    .innerJoin(productVariants, eq(cartItems.variantId, productVariants.id))
+    .where(eq(cartItems.sessionId, sessionId))
+    .orderBy(asc(cartItems.createdAt))
+    .all()
+
+  if (items.length === 0) return []
+
+  const productIds = items.map((i) => i.product.id)
+  const images = db
+    .select()
+    .from(productImages)
+    .where(inArray(productImages.productId, productIds))
+    .orderBy(asc(productImages.position))
+    .all()
+
+  const covers = new Map<number, ProductImage>()
+  for (const img of images) {
+    if (!covers.has(img.productId)) covers.set(img.productId, img)
+  }
+  const derivatives = derivativesFor([...covers.values()])
+
+  return items.map((row) => {
+    const img = covers.get(row.product.id)
+    return {
+      cartItem: row.cartItem,
+      product: row.product,
+      variant: row.variant,
+      cover: img ? { image: img, derivatives: derivatives.get(img.id) ?? [] } : null,
+    }
+  })
 }
 
 export interface SiteImageWithDerivatives {
@@ -403,3 +461,4 @@ export function findSiteImage(slot: SiteImageSlot): SiteImageWithDerivatives | n
   derivatives.sort((a, b) => a.width - b.width)
   return { image, derivatives }
 }
+

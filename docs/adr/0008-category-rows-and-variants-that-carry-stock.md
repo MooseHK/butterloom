@@ -92,3 +92,48 @@ crawled, which is most of what a category page is for.
   "Standard" for the product that comes one way — and stored, so that ordering and
   the uniqueness rule have something to hold. Two variants of one product may not
   share a label: that is one variant entered twice.
+
+## Addendum: product_stock, and what happened to it
+
+The cart, checkout and order flow landed on `main` in parallel with this work,
+and brought a `product_stock` table of its own: a product id, a variant label
+and a quantity, unique on the first two. That is `product_variants` under
+another name, minus the `position` column and minus the `variant_options` rows
+the storefront filters on. Two tables holding one fact is one of them being
+wrong, and the one that could not express a filterable axis was the one to go.
+
+So `product_stock` is retired into `product_variants` by
+`drizzle/0006_cart_holds_a_variant.sql`, and `cart_items` now holds a
+`variant_id`. Worth knowing about that migration:
+
+- **It is written by hand.** drizzle-kit sees a table dropped beside a table
+  created, asks whether that is a rename, and cannot be answered without a
+  terminal. It is not a rename: the ids in `cart_items` have to be remapped, not
+  relabelled.
+- **The new variant rows take the old stock rows' ids**, which is free because
+  `product_variants` was created empty one migration earlier, and which makes
+  the cart remap an identity rather than a join that re-derives which variant a
+  label meant.
+- **An empty `variant_label` becomes "Standard"**, because the label is what a
+  customer is shown and the column is NOT NULL. The product that somehow holds
+  both an empty label and a literal "Standard" gets the id appended to the
+  second, rather than colliding on `product_variants_label_idx` and taking the
+  whole migration down.
+- **A cart line whose variant has gone is dropped rather than carried.** It
+  points at nothing that can be priced or picked, and a cart is recoverable in a
+  way an order is not.
+
+Two consequences follow for the order flow, and both are deliberate:
+
+- **An order line stores the variant's label, not its id.** That is main's shape
+  and it is the right one: an order is a record of what was sold, and it has to
+  keep reading correctly after the variant behind it is renamed or deleted. The
+  cost is that restocking a returned or cancelled order finds its way back by
+  label, and does nothing when no variant answers to it — there is no longer a
+  shelf to put the goods back on, and inventing one would put stock against a
+  configuration the shop no longer sells.
+- **A new product starts with one "Standard" variant holding zero stock.** An
+  order line holds a variant, so a product with none cannot be put in a cart at
+  all. Zero rather than the ten `product_stock` defaulted to: a product nobody
+  has counted yet has no stock, and inventing some is a claim the shop cannot
+  honour at the door.

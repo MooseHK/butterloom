@@ -6,14 +6,12 @@ import { Seal, StorefrontLayout } from '../views/storefront.js'
 import { Picture } from '../views/picture.js'
 import {
   allowedFrom,
-  axesOf,
   facetsFor,
   findCategoryBySlug,
   findProductBySlug,
   findSiteImage,
   listCategories,
   listProducts,
-  variantsForProduct,
 } from './queries.js'
 import type { Facet, ImageWithDerivatives, ProductListing } from './queries.js'
 import {
@@ -319,11 +317,12 @@ function listing(c: Context, basePath: string, category: Category | null) {
 storefront.get('/p/:slug', (c) => {
   const detail = findProductBySlug(c.req.param('slug'))
   if (!detail) return c.notFound()
-  const { product, images } = detail
-  // Collapsed to axes and read for nothing else: a variant row carries a
-  // stock_qty, and this is the page where rendering it would be most tempting
-  // and least honest.
-  const axes = axesOf(variantsForProduct(product.id))
+  const { product, images, variants } = detail
+
+  // Main's rule, on the variant table rather than the stock table it was
+  // written against: a lone unnamed configuration is not a choice to offer.
+  const hasVariants =
+    variants.length > 1 || (variants.length === 1 && variants[0]?.variant.label !== 'Standard')
 
   return c.html(
     <StorefrontLayout
@@ -337,34 +336,94 @@ storefront.get('/p/:slug', (c) => {
           <h1>{product.title}</h1>
           <p class="price">{formatPaisa(product.pricePaisa)}</p>
           {product.description ? <p class="description">{product.description}</p> : null}
+
+          <form id="add-to-cart-form" method="post" action="/cart/add" style="margin: 12px 0 8px;">
+            <input type="hidden" name="product_id" value={product.id} />
+
+            {hasVariants ? (
+              <div class="variant-group">
+                <span class="variant-label">Select Variant</span>
+                <div class="variant-options">
+                  {variants.map(({ variant }, idx) => (
+                    <label>
+                      <input
+                        type="radio"
+                        name="variant_id"
+                        value={variant.id}
+                        class="variant-radio"
+                        checked={idx === 0}
+                        required
+                      />
+                      {/*
+                        The label is already the option values joined — "Indigo
+                        / M" — so the chip says what the axes would have said,
+                        and says it as the thing you can actually pick.
+                      */}
+                      <span class="variant-chip">{variant.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              variants[0] ? (
+                <input type="hidden" name="variant_id" value={variants[0].variant.id} />
+              ) : null
+            )}
+
+            <button type="submit" class="btn" id="add-to-cart-btn" style="margin-top: 8px;">
+              Add to Cart
+            </button>
+          </form>
+
           {/*
-            No availability is rendered here, and none ever should be: this
-            page is cached at the edge, and ADR-0007 keeps the promise that a
-            stale page cannot assert something false about stock by having it
-            assert nothing. Stock is resolved at placement, against Reservation.
-            So the axes below say what this piece comes in, never what is left
-            of it, and they are type rather than a picker — there is no cart to
-            pick into yet.
+            No availability is rendered here, and none ever should be: this page
+            is cached at the edge, and ADR-0007 keeps the promise that a stale
+            page cannot assert something false about stock by having it assert
+            nothing. The picker above names the configurations, never how many
+            of one are left; stock is resolved at placement, against Reservation.
           */}
-          {axes.length > 0 ? (
-            <dl class="axes">
-              {axes.map((axis) => (
-                <>
-                  <dt>{axis.name}</dt>
-                  <dd>
-                    {axis.values.map((value) => (
-                      <span class="chip">{value.value}</span>
-                    ))}
-                  </dd>
-                </>
-              ))}
-            </dl>
-          ) : null}
           {/* The strip above and the footer below already say where we deliver;
               what belongs at the point of decision is how you can pay. */}
-          <p class="muted">Cash on delivery, or bKash.</p>
+          <p class="muted">Cash on delivery across Bangladesh.</p>
         </div>
       </main>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            var form = document.getElementById('add-to-cart-form');
+            var btn = document.getElementById('add-to-cart-btn');
+            if (form && btn) {
+              form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var prevText = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = 'Adding...';
+                fetch('/cart/add', {
+                  method: 'POST',
+                  body: new FormData(form),
+                  headers: { 'Accept': 'application/json' }
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                  btn.textContent = 'Added to Cart ✓';
+                  var badge = document.getElementById('cart-badge');
+                  if (badge && data.count) {
+                    badge.textContent = data.count;
+                    badge.style.display = 'flex';
+                  }
+                  setTimeout(function() {
+                    btn.disabled = false;
+                    btn.textContent = prevText;
+                  }, 1200);
+                })
+                .catch(function() {
+                  form.submit();
+                });
+              });
+            }
+          `,
+        }}
+      />
     </StorefrontLayout>,
   )
 })

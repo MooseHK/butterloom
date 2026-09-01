@@ -5,6 +5,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { logger } from 'hono/logger'
 import { adminCategories } from './admin/categories.js'
 import { adminHome } from './admin/home.js'
+import { adminOrders } from './admin/orders.js'
 import { adminProducts } from './admin/products.js'
 import { adminSiteImages } from './admin/siteImages.js'
 import { config } from './config.js'
@@ -12,8 +13,11 @@ import { runMigrations } from './db/migrate.js'
 import { resolveEncoderSupport } from './images/pipeline.js'
 import { drainQueue } from './images/queue.js'
 import { brandRoutes, mediaRoutes } from './media.js'
+import { cartRoutes } from './storefront/cart.js'
 import { notFound, storefront } from './storefront/catalogue.js'
+import { checkoutRoutes } from './storefront/checkout.js'
 import { edgeCacheable } from './storefront/cache.js'
+import { orderRoutes } from './storefront/order.js'
 
 runMigrations()
 
@@ -66,16 +70,19 @@ app.use(
   }),
 )
 
+app.route('/admin/orders', adminOrders)
 app.route('/admin/products', adminProducts)
 app.route('/admin/categories', adminCategories)
 app.route('/admin/site-images', adminSiteImages)
 app.route('/admin', adminHome)
 app.route('/media', mediaRoutes)
 app.route('/brand', brandRoutes)
+app.route('/cart', cartRoutes)
+app.route('/checkout', checkoutRoutes)
+app.route('/order', orderRoutes)
 
 // Catalogue HTML is the cacheable half of the origin (ADR-0007). Registered
-// last so the admin, media and brand prefixes are matched first — those already
-// carry an immutable cache header, and edgeCacheable would overwrite it.
+// last so the admin, media, brand, cart, checkout and order prefixes are matched first.
 app.use('*', edgeCacheable)
 app.route('/', storefront)
 

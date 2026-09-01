@@ -108,10 +108,12 @@ npm start                                # http://localhost:3000/admin
   string is its own CDN cache entry, so an unvalidated parameter is an unbounded
   number of them (ADR-0008).
 
-There is still no add-to-cart button. The product page names the colours and
-sizes a piece comes in, but as type rather than as a picker: choosing a variant
-is the first thing the cart slice adds, and that POST is the one response on the
-storefront allowed to issue a cookie.
+The product page's variant list is a picker rather than type: it posts a
+`variant_id` to the cart, and that POST is the one response on the storefront
+allowed to issue a cookie, which is why every page above it can be cached. A
+cart line and an order line both hold a Variant — an order line keeps the
+variant's *label* rather than its id, so an order still reads correctly after
+the variant behind it is renamed or deleted.
 
 Two things to know about the current environment. AVIF is in the ladder but this
 machine's libvips has no AV1 encoder, so uploads produce WebP and JPEG only; the
