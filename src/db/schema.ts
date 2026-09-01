@@ -166,3 +166,131 @@ export type ProductImage = typeof productImages.$inferSelect
 export type ImageDerivative = typeof imageDerivatives.$inferSelect
 export type SiteImage = typeof siteImages.$inferSelect
 export type PendingImage = typeof pendingImages.$inferSelect
+
+/**
+ * Anonymous browser sessions for cart persistence.
+ */
+export const sessions = sqliteTable(
+  'sessions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    token: text('token').notNull(),
+    createdAt: integer('created_at').notNull().default(now),
+    lastSeenAt: integer('last_seen_at').notNull().default(now),
+  },
+  (t) => [uniqueIndex('sessions_token_idx').on(t.token)],
+)
+
+
+/**
+ * Per-variant stock tracking. A product with no variants has one row with empty variant_label.
+ */
+export const productStock = sqliteTable(
+  'product_stock',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    productId: integer('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    variantLabel: text('variant_label').notNull().default(''),
+    quantity: integer('quantity').notNull().default(0),
+  },
+  (t) => [uniqueIndex('product_stock_product_variant_idx').on(t.productId, t.variantLabel)],
+)
+
+/**
+ * Items in a session's cart.
+ */
+export const cartItems = sqliteTable(
+  'cart_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    sessionId: integer('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    productId: integer('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    stockId: integer('stock_id')
+      .notNull()
+      .references(() => productStock.id, { onDelete: 'cascade' }),
+    quantity: integer('quantity').notNull().default(1),
+    createdAt: integer('created_at').notNull().default(now),
+  },
+  (t) => [uniqueIndex('cart_items_session_stock_idx').on(t.sessionId, t.stockId)],
+)
+
+export const fulfilmentStates = [
+  'placed',
+  'packed',
+  'handed_over',
+  'delivered',
+  'returned',
+  'cancelled',
+] as const
+export type FulfilmentState = (typeof fulfilmentStates)[number]
+
+/**
+ * The core order record.
+ */
+export const orders = sqliteTable(
+  'orders',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    customerName: text('customer_name').notNull(),
+    customerPhone: text('customer_phone').notNull(),
+    deliveryAddress: text('delivery_address').notNull(),
+    deliveryNotes: text('delivery_notes').notNull().default(''),
+    totalPaisa: integer('total_paisa').notNull(),
+    fulfilmentState: text('fulfilment_state', { enum: fulfilmentStates })
+      .notNull()
+      .default('placed'),
+    paymentTier: text('payment_tier').notNull().default('cod'),
+    createdAt: integer('created_at').notNull().default(now),
+    updatedAt: integer('updated_at').notNull().default(now),
+  },
+)
+
+/**
+ * Snapshot of what was ordered (decoupled from product changes).
+ */
+export const orderItems = sqliteTable(
+  'order_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    orderId: integer('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    productId: integer('product_id').references(() => products.id, { onDelete: 'set null' }),
+    productTitle: text('product_title').notNull(),
+    variantLabel: text('variant_label').notNull().default(''),
+    pricePaisa: integer('price_paisa').notNull(),
+    quantity: integer('quantity').notNull().default(1),
+  },
+  (t) => [index('order_items_order_idx').on(t.orderId)],
+)
+
+/**
+ * Audit trail of every state change.
+ */
+export const orderEvents = sqliteTable(
+  'order_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    orderId: integer('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    fromState: text('from_state', { enum: fulfilmentStates }),
+    toState: text('to_state', { enum: fulfilmentStates }).notNull(),
+    createdAt: integer('created_at').notNull().default(now),
+  },
+  (t) => [index('order_events_order_idx').on(t.orderId)],
+)
+
+export type Session = typeof sessions.$inferSelect
+export type ProductStock = typeof productStock.$inferSelect
+export type CartItem = typeof cartItems.$inferSelect
+export type Order = typeof orders.$inferSelect
+export type OrderItem = typeof orderItems.$inferSelect
+export type OrderEvent = typeof orderEvents.$inferSelect
+

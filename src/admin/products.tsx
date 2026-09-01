@@ -1,8 +1,8 @@
-import { and, asc, count, eq } from 'drizzle-orm'
+import { and, asc, count, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { config } from '../config.js'
 import { db } from '../db/client.js'
-import { pendingImages, productImages, products } from '../db/schema.js'
+import { pendingImages, productImages, products, productStock } from '../db/schema.js'
 import { UploadError } from '../images/pipeline.js'
 import {
   drainQueue,
@@ -98,6 +98,21 @@ adminProducts.get('/', (c) => {
       .all()
       .map((r) => [r.productId, r.n] as const),
   )
+  const stockCounts = new Map(
+    db
+      .select({
+        productId: productStock.productId,
+        total: sql<number>`coalesce(sum(${productStock.quantity}), 0)`,
+        variantCount: count(),
+      })
+      .from(productStock)
+      .groupBy(productStock.productId)
+      .all()
+      .map(
+        (r) =>
+          [r.productId, { total: Number(r.total), variantCount: Number(r.variantCount) }] as const,
+      ),
+  )
   const pending = pendingByProduct()
   const error = c.req.query('error')
   const added = Number(c.req.query('added') ?? 0)
@@ -146,12 +161,14 @@ adminProducts.get('/', (c) => {
               <th>Title</th>
               <th>Slug</th>
               <th>Price</th>
+              <th>Stock</th>
               <th>Images</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((p) => {
               const tally = pending.get(p.id)
+              const stock = stockCounts.get(p.id)
               return (
                 <tr>
                   <td>
@@ -159,6 +176,22 @@ adminProducts.get('/', (c) => {
                   </td>
                   <td class="muted">{p.slug}</td>
                   <td>{formatPaisa(p.pricePaisa)}</td>
+                  <td>
+                    {stock ? (
+                      stock.total > 0 ? (
+                        <span>
+                          {stock.total} in stock
+                          {stock.variantCount > 1 ? (
+                            <span class="muted"> ({stock.variantCount} variants)</span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span class="fail">0 in stock</span>
+                      )
+                    ) : (
+                      <span class="muted">0 in stock</span>
+                    )}
+                  </td>
                   <td>
                     {imageCounts.get(p.id) ?? 0}
                     {tally?.queued ? <span class="muted"> · {tally.queued} encoding</span> : null}
@@ -231,6 +264,14 @@ adminProducts.post('/', async (c) => {
           .returning({ id: products.id })
           .all()
         if (!row) throw new Error('insert returned no row')
+        // Default initial stock entry for each product
+        tx.insert(productStock)
+          .values({
+            productId: row.id,
+            variantLabel: '',
+            quantity: 10,
+          })
+          .run()
         return { id: row.id, draft }
       }),
     )
@@ -238,6 +279,7 @@ adminProducts.post('/', async (c) => {
     console.error('[admin] bulk insert', err)
     return fail('Could not save these products. See the server log.')
   }
+
 
   let queued = 0
   for (const { id, draft } of created) {
@@ -273,6 +315,26 @@ adminProducts.get('/:id', (c) => {
   const [product] = db.select().from(products).where(eq(products.id, id)).all()
   if (!product) return c.notFound()
 
+  let stocks = db
+    .select()
+    .from(productStock)
+    .where(eq(productStock.productId, id))
+    .orderBy(asc(productStock.variantLabel))
+    .all()
+
+  // Ensure at least a default stock record exists
+  if (stocks.length === 0) {
+    db.insert(productStock)
+      .values({ productId: id, variantLabel: '', quantity: 0 })
+      .run()
+    stocks = db
+      .select()
+      .from(productStock)
+      .where(eq(productStock.productId, id))
+      .orderBy(asc(productStock.variantLabel))
+      .all()
+  }
+
   const images = db
     .select()
     .from(productImages)
@@ -286,6 +348,7 @@ adminProducts.get('/:id', (c) => {
 
   const error = c.req.query('error')
   const uploaded = Number(c.req.query('uploaded') ?? 0)
+  const notice = c.req.query('notice')
 
   return c.html(
     <AdminLayout
@@ -300,6 +363,7 @@ adminProducts.get('/:id', (c) => {
         </a>
       </p>
       {error ? <p class="notice error">{error}</p> : null}
+      {notice ? <p class="notice">{notice}</p> : null}
       {uploaded > 0 ? (
         <p class="notice">
           {uploaded} {uploaded === 1 ? 'photograph' : 'photographs'} accepted — encoding in the
@@ -307,6 +371,91 @@ adminProducts.get('/:id', (c) => {
         </p>
       ) : null}
 
+      <h2>Inventory & Variants</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Variant</th>
+              <th>Quantity in stock</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stocks.map((s) => (
+              <tr>
+                <td>{s.variantLabel ? <b>{s.variantLabel}</b> : <span class="muted">(Default / No variant)</span>}</td>
+                <td>
+                  <form
+                    class="inline-form"
+                    method="post"
+                    action={`/admin/products/${product.id}/stock/${s.id}/update`}
+                  >
+                    <input
+                      type="number"
+                      name="quantity"
+                      min="0"
+                      value={s.quantity}
+                      style="width: 80px;"
+                      required
+                    />
+                    <button type="submit">Update</button>
+                  </form>
+                </td>
+                <td>
+                  {stocks.length > 1 ? (
+                    <form
+                      class="inline-form"
+                      method="post"
+                      action={`/admin/products/${product.id}/stock/${s.id}/delete`}
+                    >
+                      <button
+                        type="submit"
+                        class="danger"
+                        onclick="return confirm('Delete this variant?')"
+                      >
+                        Delete
+                      </button>
+                    </form>
+                  ) : (
+                    <span class="muted">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Add variant</h3>
+      <form method="post" action={`/admin/products/${product.id}/stock`}>
+        <div class="row">
+          <label>
+            Variant label
+            <input
+              name="variantLabel"
+              placeholder="e.g. S, M, L, XL or Red / L"
+              maxlength={100}
+              required
+            />
+          </label>
+          <label>
+            Initial stock
+            <input
+              name="quantity"
+              type="number"
+              min="0"
+              value="10"
+              required
+            />
+          </label>
+        </div>
+        <p class="actions">
+          <button type="submit">Add variant</button>
+        </p>
+      </form>
+
+      <h2>Photographs</h2>
       <form method="post" action={`/admin/products/${product.id}/images`} enctype="multipart/form-data">
         <label>
           Photographs
@@ -362,6 +511,70 @@ adminProducts.get('/:id', (c) => {
       {images.length === 0 && waiting.length === 0 ? <p class="muted">No images yet.</p> : null}
     </AdminLayout>,
   )
+})
+
+adminProducts.post('/:id/stock', async (c) => {
+  const id = Number(c.req.param('id'))
+  const [product] = db.select().from(products).where(eq(products.id, id)).all()
+  if (!product) return c.notFound()
+
+  const back = `/admin/products/${id}`
+  let form: FormData
+  try {
+    form = await c.req.formData()
+  } catch {
+    return c.redirect(`${back}?error=Invalid+form+submission`, 303)
+  }
+
+  const variantLabel = String(form.get('variantLabel') ?? '').trim()
+  const quantity = Math.max(0, parseInt(String(form.get('quantity') ?? '0'), 10) || 0)
+
+  try {
+    db.insert(productStock)
+      .values({
+        productId: id,
+        variantLabel,
+        quantity,
+      })
+      .run()
+    return c.redirect(`${back}?notice=Variant+added`, 303)
+  } catch (err) {
+    return c.redirect(`${back}?error=Variant+already+exists+or+could+not+be+added`, 303)
+  }
+})
+
+adminProducts.post('/:id/stock/:stockId/update', async (c) => {
+  const id = Number(c.req.param('id'))
+  const stockId = Number(c.req.param('stockId'))
+  const back = `/admin/products/${id}`
+
+  let form: FormData
+  try {
+    form = await c.req.formData()
+  } catch {
+    return c.redirect(`${back}?error=Invalid+form+submission`, 303)
+  }
+
+  const quantity = Math.max(0, parseInt(String(form.get('quantity') ?? '0'), 10) || 0)
+
+  db.update(productStock)
+    .set({ quantity })
+    .where(and(eq(productStock.id, stockId), eq(productStock.productId, id)))
+    .run()
+
+  return c.redirect(`${back}?notice=Stock+updated`, 303)
+})
+
+adminProducts.post('/:id/stock/:stockId/delete', (c) => {
+  const id = Number(c.req.param('id'))
+  const stockId = Number(c.req.param('stockId'))
+  const back = `/admin/products/${id}`
+
+  db.delete(productStock)
+    .where(and(eq(productStock.id, stockId), eq(productStock.productId, id)))
+    .run()
+
+  return c.redirect(`${back}?notice=Variant+deleted`, 303)
 })
 
 adminProducts.post('/:id/images', async (c) => {
@@ -441,4 +654,5 @@ adminProducts.post('/:id/images/:imageId/delete', (c) => {
     .run()
   return c.redirect(`/admin/products/${id}`, 303)
 })
+
 

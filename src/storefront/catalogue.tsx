@@ -102,7 +102,9 @@ storefront.get('/', (c) => {
 storefront.get('/p/:slug', (c) => {
   const detail = findProductBySlug(c.req.param('slug'))
   if (!detail) return c.notFound()
-  const { product, images } = detail
+  const { product, images, stocks } = detail
+
+  const hasVariants = stocks.length > 1 || (stocks.length === 1 && Boolean(stocks[0]?.variantLabel))
 
   return c.html(
     <StorefrontLayout
@@ -116,6 +118,40 @@ storefront.get('/p/:slug', (c) => {
           <h1>{product.title}</h1>
           <p class="price">{formatPaisa(product.pricePaisa)}</p>
           {product.description ? <p class="description">{product.description}</p> : null}
+
+          <form id="add-to-cart-form" method="post" action="/cart/add" style="margin: 12px 0 8px;">
+            <input type="hidden" name="product_id" value={product.id} />
+
+            {hasVariants ? (
+              <div class="variant-group">
+                <span class="variant-label">Select Variant</span>
+                <div class="variant-options">
+                  {stocks.map((s, idx) => (
+                    <label>
+                      <input
+                        type="radio"
+                        name="stock_id"
+                        value={s.id}
+                        class="variant-radio"
+                        checked={idx === 0}
+                        required
+                      />
+                      <span class="variant-chip">
+                        {s.variantLabel || 'Standard'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              stocks[0] ? <input type="hidden" name="stock_id" value={stocks[0].id} /> : null
+            )}
+
+            <button type="submit" class="btn" id="add-to-cart-btn" style="margin-top: 8px;">
+              Add to Cart
+            </button>
+          </form>
+
           {/*
             No availability is rendered here, and none ever should be: this
             page is cached at the edge, and ADR-0007 keeps the promise that a
@@ -124,12 +160,50 @@ storefront.get('/p/:slug', (c) => {
           */}
           {/* The strip above and the footer below already say where we deliver;
               what belongs at the point of decision is how you can pay. */}
-          <p class="muted">Cash on delivery, or bKash.</p>
+          <p class="muted">Cash on delivery across Bangladesh.</p>
         </div>
       </main>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            var form = document.getElementById('add-to-cart-form');
+            var btn = document.getElementById('add-to-cart-btn');
+            if (form && btn) {
+              form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var prevText = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = 'Adding...';
+                fetch('/cart/add', {
+                  method: 'POST',
+                  body: new FormData(form),
+                  headers: { 'Accept': 'application/json' }
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                  btn.textContent = 'Added to Cart ✓';
+                  var badge = document.getElementById('cart-badge');
+                  if (badge && data.count) {
+                    badge.textContent = data.count;
+                    badge.style.display = 'flex';
+                  }
+                  setTimeout(function() {
+                    btn.disabled = false;
+                    btn.textContent = prevText;
+                  }, 1200);
+                })
+                .catch(function() {
+                  form.submit();
+                });
+              });
+            }
+          `,
+        }}
+      />
     </StorefrontLayout>,
   )
 })
+
 
 /**
  * A horizontal scroll-snap row, not a stack. Stacking put the price a screen
