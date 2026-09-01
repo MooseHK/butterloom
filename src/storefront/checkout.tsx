@@ -5,7 +5,7 @@ import { cartItems, orderEvents, orderItems, orders, productVariants } from '../
 import { formatPaisa } from '../lib/money.js'
 import { StorefrontLayout } from '../views/storefront.js'
 import { getCartItemsForSession } from './queries.js'
-import { getCartItemCount, getSession } from './session.js'
+import { getCartItemCount, getSession, syncCartCountCookie } from './session.js'
 
 export const checkoutRoutes = new Hono()
 
@@ -28,24 +28,31 @@ checkoutRoutes.get('/', (c) => {
     <StorefrontLayout title="Checkout — butterloom" canonicalPath="/checkout" cartCount={cartCount}>
       <main>
         <div class="head">
+          <nav class="crumbs" aria-label="Breadcrumb">
+            <a href="/cart">Your cart</a>
+          </nav>
           <h1>Checkout</h1>
+          {/* The one thing a customer wants confirmed before typing an address:
+              that nothing is being asked of them now. */}
+          <p class="muted">Cash on delivery — nothing to pay until it arrives.</p>
         </div>
 
         {error ? <div class="notice-banner error">{error}</div> : null}
 
-        <div class="checkout-grid">
-          <form method="post" action="/checkout">
-            <h2 style="font-size: 18px; margin: 0 0 16px;">Delivery Details</h2>
+        <form method="post" action="/checkout">
+          <div class="panel">
+            <h2 class="panel-head">Where it goes</h2>
 
             <div class="form-group">
               <label class="form-label" for="customer_name">
-                Full Name
+                Name
               </label>
               <input
                 id="customer_name"
                 name="customer_name"
                 class="form-input"
                 required
+                autocomplete="name"
                 placeholder="Nusrat Jahan"
                 maxlength={150}
               />
@@ -53,12 +60,20 @@ checkoutRoutes.get('/', (c) => {
 
             <div class="form-group">
               <label class="form-label" for="customer_phone">
-                Phone Number
+                Phone
               </label>
+              {/*
+                inputmode and autocomplete are the difference between a numeric
+                keypad with the number already offered and a customer typing
+                eleven digits on a QWERTY keyboard. type="tel" alone gets the
+                keypad; the rest is what stops them typing at all.
+              */}
               <input
                 id="customer_phone"
                 name="customer_phone"
                 type="tel"
+                inputmode="tel"
+                autocomplete="tel"
                 class="form-input"
                 required
                 placeholder="01712345678"
@@ -68,7 +83,7 @@ checkoutRoutes.get('/', (c) => {
 
             <div class="form-group">
               <label class="form-label" for="delivery_address">
-                Delivery Address
+                Address
               </label>
               <textarea
                 id="delivery_address"
@@ -76,64 +91,56 @@ checkoutRoutes.get('/', (c) => {
                 class="form-textarea"
                 rows={3}
                 required
-                placeholder="House, Road, Area, District"
+                autocomplete="street-address"
+                placeholder="House, road, area, district"
               ></textarea>
             </div>
 
             <div class="form-group">
               <label class="form-label" for="delivery_notes">
-                Delivery Notes (Optional)
+                Notes for the courier — optional
               </label>
               <textarea
                 id="delivery_notes"
                 name="delivery_notes"
                 class="form-textarea"
                 rows={2}
-                placeholder="Any special instructions for courier"
+                placeholder="A landmark, or when to call"
               ></textarea>
             </div>
+          </div>
 
-            <div class="order-summary-box" style="margin: 20px 0;">
-              <h3 style="font-size: 15px; margin: 0 0 10px;">Payment Tier</h3>
-              <p style="margin: 0; font-size: 14px;">
-                <strong>Cash on Delivery (COD)</strong>
-              </p>
-              <p class="muted" style="margin: 4px 0 0; font-size: 13px;">
-                Pay in cash when your order is delivered to your doorstep.
-              </p>
-            </div>
-
-            <div class="order-summary-box" style="margin: 20px 0;">
-              <h3 style="font-size: 15px; margin: 0 0 12px;">Order Summary</h3>
+          {/* Payment Tier is our word for it, not the customer's (CONTEXT.md).
+              What they need to read is what they will be asked to do. */}
+          <div class="panel">
+            <h2 class="panel-head">What you are ordering</h2>
+            <div class="lines">
               {items.map((item) => (
-                <div class="order-summary-item">
-                  <div>
-                    <span>
-                      {item.product.title}
-                      {item.variant.label === 'Standard' ? '' : ` (${item.variant.label})`}
-                    </span>
-                    <span class="muted"> × {item.cartItem.quantity}</span>
-                  </div>
-                  <span>{formatPaisa(item.product.pricePaisa * item.cartItem.quantity)}</span>
+                <div class="line">
+                  <span>
+                    {item.product.title}
+                    {item.variant.label === 'Standard' ? '' : ` — ${item.variant.label}`}
+                    <span class="qty"> × {item.cartItem.quantity}</span>
+                  </span>
+                  <span class="amount">
+                    {formatPaisa(item.product.pricePaisa * item.cartItem.quantity)}
+                  </span>
                 </div>
               ))}
-              <div
-                class="cart-row grand"
-                style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hairline);"
-              >
-                <span>Total Amount</span>
-                <span>{formatPaisa(totalPaisa)}</span>
-              </div>
             </div>
+            <div class="cart-row grand">
+              <span>Total</span>
+              <span>{formatPaisa(totalPaisa)}</span>
+            </div>
+            <p class="muted note">Payable in cash to the courier at the door.</p>
+          </div>
 
-            <button type="submit" class="btn" style="margin-top: 8px;">
-              Place Order (Cash on Delivery)
+          <div class="actions">
+            <button type="submit" class="btn">
+              Place order
             </button>
-            <p class="muted" style="text-align: center; margin-top: 12px; font-size: 13px;">
-              By placing this order, you confirm you will receive and pay for the parcel upon delivery.
-            </p>
-          </form>
-        </div>
+          </div>
+        </form>
       </main>
     </StorefrontLayout>,
   )
@@ -243,5 +250,9 @@ checkoutRoutes.post('/', async (c) => {
     return c.redirect(`/checkout?error=${msg}`, 303)
   }
 
+  // The cart was emptied inside the transaction; the badge has to hear about it
+  // before the confirmation page renders, or it keeps counting a cart that no
+  // longer exists.
+  syncCartCountCookie(c, null)
   return c.redirect(`/order/${orderId}`, 303)
 })

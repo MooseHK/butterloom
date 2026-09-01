@@ -331,18 +331,27 @@ storefront.get('/p/:slug', (c) => {
       canonicalPath={`/p/${product.slug}`}
     >
       <main>
+        {/* The wordmark goes home, but it reads as a logo. This says it in
+            words, at the top of the one page a visitor arrives on from a
+            search result with no idea what is above it. */}
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <a href="/">The collection</a>
+        </nav>
         <Shots images={images} />
         <div class="detail">
           <h1>{product.title}</h1>
           <p class="price">{formatPaisa(product.pricePaisa)}</p>
           {product.description ? <p class="description">{product.description}</p> : null}
 
-          <form id="add-to-cart-form" method="post" action="/cart/add" style="margin: 12px 0 8px;">
+          <form id="add-to-cart-form" class="buy" method="post" action="/cart/add">
             <input type="hidden" name="product_id" value={product.id} />
 
             {hasVariants ? (
-              <div class="variant-group">
-                <span class="variant-label">Select Variant</span>
+              <fieldset class="variant-group">
+                {/* Not "choose a size": a label is the axes joined, so it can
+                    read "Indigo / M" as easily as "M". This heading has to be
+                    true of whatever the operator configured. */}
+                <legend class="variant-label">Choose one</legend>
                 <div class="variant-options">
                   {variants.map(({ variant }, idx) => (
                     <label>
@@ -363,15 +372,13 @@ storefront.get('/p/:slug', (c) => {
                     </label>
                   ))}
                 </div>
-              </div>
-            ) : (
-              variants[0] ? (
-                <input type="hidden" name="variant_id" value={variants[0].variant.id} />
-              ) : null
-            )}
+              </fieldset>
+            ) : variants[0] ? (
+              <input type="hidden" name="variant_id" value={variants[0].variant.id} />
+            ) : null}
 
-            <button type="submit" class="btn" id="add-to-cart-btn" style="margin-top: 8px;">
-              Add to Cart
+            <button type="submit" class="btn" id="add-to-cart-btn">
+              Add to cart
             </button>
           </form>
 
@@ -382,9 +389,10 @@ storefront.get('/p/:slug', (c) => {
             nothing. The picker above names the configurations, never how many
             of one are left; stock is resolved at placement, against Reservation.
           */}
-          {/* The strip above and the footer below already say where we deliver;
-              what belongs at the point of decision is how you can pay. */}
-          <p class="muted">Cash on delivery across Bangladesh.</p>
+          {/* The strip above says we take cash on delivery and the footer says
+              where we deliver. What is left to say at the point of decision is
+              what cash on delivery actually asks of the customer. */}
+          <p class="muted">Nothing to pay now — you pay the courier at the door.</p>
         </div>
       </main>
       <script
@@ -397,7 +405,7 @@ storefront.get('/p/:slug', (c) => {
                 e.preventDefault();
                 var prevText = btn.textContent;
                 btn.disabled = true;
-                btn.textContent = 'Adding...';
+                btn.textContent = 'Adding…';
                 fetch('/cart/add', {
                   method: 'POST',
                   body: new FormData(form),
@@ -405,16 +413,16 @@ storefront.get('/p/:slug', (c) => {
                 })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
-                  btn.textContent = 'Added to Cart ✓';
+                  btn.textContent = 'Added to cart ✓';
                   var badge = document.getElementById('cart-badge');
                   if (badge && data.count) {
                     badge.textContent = data.count;
-                    badge.style.display = 'flex';
+                    badge.hidden = false;
                   }
                   setTimeout(function() {
                     btn.disabled = false;
                     btn.textContent = prevText;
-                  }, 1200);
+                  }, 1400);
                 })
                 .catch(function() {
                   form.submit();
@@ -504,9 +512,14 @@ export function notFound(c: Context) {
           <h1>Not found</h1>
         </div>
         <div class="detail">
-          <p class="muted">
-            That page does not exist. <a href="/">Back to the collection</a>.
-          </p>
+          <p class="muted">This page does not exist, or the piece is no longer listed.</p>
+          {/* A dead end wants a way out that a thumb can hit, not a word in a
+              sentence. */}
+          <div class="actions">
+            <a class="btn secondary" href="/">
+              The collection
+            </a>
+          </div>
         </div>
       </main>
     </StorefrontLayout>,

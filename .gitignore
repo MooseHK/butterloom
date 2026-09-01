@@ -5,3 +5,7 @@ var/
 # out as a ~2.5MB single-file bundle with every artboard inlined. The artboards
 # are the source; the bundle is a build artefact.
 docs/design/mobile-wireframes/butterloom-mobile-wireframes.html
+
+# Real environment, as opposed to .env.example: it carries the admin password
+# on any machine that is not a laptop, and git add . should never pick it up.
+.env

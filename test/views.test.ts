@@ -31,3 +31,31 @@ test('the brand mark carries intrinsic dimensions', () => {
   // arrives, on exactly the networks this architecture is built around.
   assert.match(shell, /<img src="\/brand\/[0-9a-f]{64}\.png" width="460" height="460"/)
 })
+
+test('an empty cart badge is hidden, not printed as a zero', () => {
+  // `hidden` is display:none in the UA sheet at the lowest specificity there
+  // is, and `.cart-badge { display: flex }` beats it. Without the override the
+  // header carries a literal 0 on every page a visitor has no cart on.
+  assert.match(shell, /<span class="cart-badge" id="cart-badge" hidden="">/)
+  assert.match(shell, /\.cart-badge\[hidden\] \{ display: none; \}/)
+})
+
+test('the cart count is read from a cookie, never rendered into a cached page', () => {
+  // ADR-0007: / and /p/:slug are edge-cached, so their bytes have to be the
+  // same for every visitor. A count in the HTML would hand one shopper's cart
+  // to the next one served from the Dhaka PoP.
+  const empty = String(
+    StorefrontLayout({ title: 'x', canonicalPath: '/', cartCount: 0, children: null }),
+  )
+  assert.match(empty, /bl_cart_count/)
+  assert.match(empty, /<span class="cart-badge" id="cart-badge" hidden="">/)
+})
+
+test('only the cacheable route shapes are prefetched', () => {
+  // Prefetching /cart, /checkout or /order would spend a visitor's mobile data
+  // on no-store, per-visitor pages.
+  assert.match(shell, /<script type="speculationrules">/)
+  assert.match(shell, /"href_matches":"\/p\/\*"/)
+  assert.doesNotMatch(shell, /"href_matches":"\/(cart|checkout|order)/)
+  assert.match(shell, /"eagerness":"moderate"/)
+})

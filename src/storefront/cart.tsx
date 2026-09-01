@@ -6,7 +6,12 @@ import { formatPaisa } from '../lib/money.js'
 import { Picture } from '../views/picture.js'
 import { StorefrontLayout } from '../views/storefront.js'
 import { getCartItemsForSession } from './queries.js'
-import { getCartItemCount, getOrCreateSession, getSession } from './session.js'
+import {
+  getCartItemCount,
+  getOrCreateSession,
+  getSession,
+  syncCartCountCookie,
+} from './session.js'
 
 export const cartRoutes = new Hono()
 
@@ -24,20 +29,28 @@ cartRoutes.get('/', (c) => {
   )
 
   return c.html(
-    <StorefrontLayout title="Your Cart — butterloom" canonicalPath="/cart" cartCount={cartCount}>
+    <StorefrontLayout title="Your cart — butterloom" canonicalPath="/cart" cartCount={cartCount}>
       <main>
         <div class="head">
-          <h1>Your Cart</h1>
+          <nav class="crumbs" aria-label="Breadcrumb">
+            <a href="/">Keep looking</a>
+          </nav>
+          <h1>Your cart</h1>
+          {items.length > 0 ? (
+            <span>
+              {cartCount} {cartCount === 1 ? 'item' : 'items'}
+            </span>
+          ) : null}
         </div>
 
         {items.length === 0 ? (
-          <div class="detail" style="padding-top: 32px; text-align: center;">
-            <p class="muted">Your cart is currently empty.</p>
-            <p style="margin-top: 20px;">
-              <a class="btn" href="/" style="display: inline-flex; width: auto;">
-                Explore the collection
+          <div class="detail centre">
+            <p class="muted">Nothing in it yet.</p>
+            <div class="actions">
+              <a class="btn secondary" href="/">
+                The collection
               </a>
-            </p>
+            </div>
           </div>
         ) : (
           <>
@@ -64,17 +77,22 @@ cartRoutes.get('/', (c) => {
                         <a href={`/p/${item.product.slug}`}>{item.product.title}</a>
                       </h2>
                       {item.variant.label !== 'Standard' ? (
-                        <p class="cart-variant">Variant: {item.variant.label}</p>
+                        <p class="cart-variant">{item.variant.label}</p>
                       ) : null}
                       <p class="cart-price">{formatPaisa(item.product.pricePaisa)} each</p>
-                      <div class="cart-qty-form">
+                      <div class="cart-controls">
                         <form method="post" action="/cart/update">
                           <input type="hidden" name="cart_item_id" value={item.cartItem.id} />
-                          <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 400;">
-                            Qty:
+                          {/* A native select, so the phone opens its own wheel
+                              rather than the page growing a stepper. It submits
+                              on change where there is script and on the button
+                              below where there is not. */}
+                          <label class="cart-qty-label">
+                            Qty
                             <select
                               name="quantity"
                               class="cart-qty-select"
+                              aria-label={`Quantity of ${item.product.title}`}
                               onchange="this.form.submit()"
                             >
                               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((q) => (
@@ -84,31 +102,37 @@ cartRoutes.get('/', (c) => {
                               ))}
                             </select>
                           </label>
+                          <noscript>
+                            <button type="submit" class="cart-remove-btn">
+                              Update
+                            </button>
+                          </noscript>
                         </form>
                         <form method="post" action="/cart/remove">
                           <input type="hidden" name="cart_item_id" value={item.cartItem.id} />
-                          <button type="submit" class="cart-remove-btn">
+                          <button
+                            type="submit"
+                            class="cart-remove-btn"
+                            aria-label={`Remove ${item.product.title}`}
+                          >
                             Remove
                           </button>
                         </form>
                       </div>
                     </div>
-                    <div style="font-weight: 500; font-size: 15px; text-align: right;">
-                      {formatPaisa(lineTotal)}
-                    </div>
+                    <div class="cart-line">{formatPaisa(lineTotal)}</div>
                   </li>
                 )
               })}
             </ul>
 
-            <div class="cart-total-box">
+            {/* Subtotal and total were the same number printed twice, which is
+                what a delivery charge line will make untrue — and until there
+                is one, saying it twice is only more ink. */}
+            <div class="panel">
               <div class="cart-row">
-                <span>Subtotal</span>
-                <span>{formatPaisa(totalPaisa)}</span>
-              </div>
-              <div class="cart-row">
-                <span class="muted">Payment</span>
-                <span>Cash on Delivery</span>
+                <span class="lab">Payment</span>
+                <span>Cash on delivery</span>
               </div>
               <div class="cart-row grand">
                 <span>Total</span>
@@ -116,16 +140,12 @@ cartRoutes.get('/', (c) => {
               </div>
             </div>
 
-            <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 24px;">
+            <div class="actions">
               <a href="/checkout" class="btn">
-                Proceed to Checkout
+                Checkout
               </a>
-              <a
-                href="/"
-                class="btn secondary"
-                style="text-align: center; justify-content: center;"
-              >
-                Continue Shopping
+              <a href="/" class="btn secondary">
+                Keep looking
               </a>
             </div>
           </>
@@ -200,6 +220,8 @@ cartRoutes.post('/add', async (c) => {
       .run()
   }
 
+  syncCartCountCookie(c, session)
+
   const isJson =
     c.req.header('accept')?.includes('application/json') ||
     c.req.header('x-requested-with') === 'XMLHttpRequest'
@@ -243,6 +265,7 @@ cartRoutes.post('/update', async (c) => {
       .run()
   }
 
+  syncCartCountCookie(c, session)
   return c.redirect('/cart', 303)
 })
 
@@ -264,5 +287,6 @@ cartRoutes.post('/remove', async (c) => {
       .run()
   }
 
+  syncCartCountCookie(c, session)
   return c.redirect('/cart', 303)
 })
