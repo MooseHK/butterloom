@@ -62,6 +62,11 @@ Butterloom. Fulfilment State returned; COD settlement is written off, while prep
 settlement follows the refund policy. The return freight is a cost we bear.
 _Avoid_: return, failed delivery, cancellation (a cancellation happens before dispatch)
 
+**Cart**:
+The set of items a visitor intends to buy, before an Order exists. It holds no
+stock; availability is resolved at placement, not when an item is added.
+_Avoid_: basket, bag
+
 ### Fulfilment
 
 **Consignment**:

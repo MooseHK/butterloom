@@ -1,0 +1,60 @@
+# Serve catalogue HTML from the edge and generate image derivatives at upload
+
+Butterloom's customers are on Bangladeshi mobile networks, where the binding
+constraint is round-trip time and JavaScript execution on inexpensive phones
+rather than raw throughput. A cold HTTPS connection from Dhaka to a Singapore
+origin costs roughly three round trips — around 250ms — before the server does any
+work, while a Dhaka edge PoP answers in 10–20ms. Catalogue HTML is therefore
+cacheable and served from the edge, and images, which are around 97% of page
+weight, are pre-generated into an immutable, content-addressed derivative ladder at
+upload time and served from the same CDN. The origin is a single small instance in
+Singapore behind it.
+
+## Considered options
+
+Rendering every request at the origin is simplest and always truthful, but concedes
+200–300ms of TTFB on every navigation to precisely the users being optimised for.
+Fully pre-rendering the catalogue to flat files was rejected because Reservation
+expiry is a timer, which would fire rebuilds on a clock. Caching pages with
+availability baked in behind a short TTL and a purge was rejected because it adds a
+purge path that must never silently fail, in exchange for a property the option
+below gets for free.
+
+A managed image CDN would have been less code to own, and was rejected to avoid a
+vendor on the storefront's critical path with per-delivery pricing in USD.
+On-the-fly resizing was rejected because it puts image encoding on the request path
+of the smallest instance ADR-0003 calls for.
+
+## Consequences
+
+- **Availability is deliberately excluded from cached HTML.** The cached product
+  page always renders the product; availability is resolved at order placement,
+  where Reservation already lives per CONTEXT.md. A stale page can never assert
+  something false about stock, because it asserts nothing about stock.
+- **No cacheable path may ever set a cookie.** A CDN will not cache a response
+  carrying `Set-Cookie`, so a session started during catalogue browsing silently
+  disables edge caching of HTML with no error and no obvious symptom. Carts are
+  created lazily: the first add-to-cart POST is the only response that issues a
+  cookie, and the cart itself lives server-side keyed by it.
+- **Admin paths must be excluded from cache rules explicitly**, and the exclusion
+  is security-relevant rather than merely a performance detail.
+- **The origin's template-rendering speed is nearly irrelevant to browsing traffic**,
+  so it must not be used as an argument in future stack discussions. The origin's
+  hot paths are checkout, Reservation and the back-office.
+- **Derivatives are named by content hash and are immutable**, so they carry
+  far-future cache headers and there is no purge logic to maintain or get wrong.
+- **The AVIF/WebP encoder is a subprocess, not a language binding.** Derivative
+  generation happens a handful of times a day inside an admin form, so shelling out
+  keeps encoder choice independent of ADR-0005.
+- **Client JavaScript is roughly 1–2KB, hand-written, with no framework.** It covers
+  two interactions: the Pathao city/zone/area cascade that ADR-0004 makes mandatory,
+  fetching edge-cacheable option fragments rather than shipping the whole location
+  tree, and a cart count read from a client-readable cookie — which is what makes a
+  per-visitor badge possible on a shared cached page at all. Every form is a real
+  form that POSTs and redirects, so checkout completes with JavaScript disabled.
+- **Egress, not compute, is the largest infrastructure cost**, because every image
+  byte is served to Bangladesh. Object storage is chosen for zero egress fees.
+- **An international-bandwidth disruption in Bangladesh leaves cached catalogue
+  pages serving from the Dhaka PoP while checkout, being uncached, stops.** This is
+  accepted as a noted risk rather than designed around; capturing orders for later
+  replay would require the queue ADR-0003 explicitly excludes.
