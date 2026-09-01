@@ -30,7 +30,7 @@ export const adminProducts = new Hono()
  */
 
 /** Rows rendered without any script; enough for a normal restock. */
-const initialRows = 3
+const initialRows = 1
 /**
  * A hundred products at four photographs each does not belong in one multipart
  * body — config.maxRequestBytes would refuse it long before this does, but this
@@ -139,35 +139,37 @@ adminProducts.get('/', (c) => {
       </form>
       <script dangerouslySetInnerHTML={{ __html: addRowScript }} />
 
-      <table>
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Slug</th>
-            <th>Price</th>
-            <th>Images</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((p) => {
-            const tally = pending.get(p.id)
-            return (
-              <tr>
-                <td>
-                  <a href={`/admin/products/${p.id}`}>{p.title}</a>
-                </td>
-                <td class="muted">{p.slug}</td>
-                <td>{formatPaisa(p.pricePaisa)}</td>
-                <td>
-                  {imageCounts.get(p.id) ?? 0}
-                  {tally?.queued ? <span class="muted"> · {tally.queued} encoding</span> : null}
-                  {tally?.failed ? <span class="fail"> · {tally.failed} failed</span> : null}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Slug</th>
+              <th>Price</th>
+              <th>Images</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p) => {
+              const tally = pending.get(p.id)
+              return (
+                <tr>
+                  <td>
+                    <a href={`/admin/products/${p.id}`}>{p.title}</a>
+                  </td>
+                  <td class="muted">{p.slug}</td>
+                  <td>{formatPaisa(p.pricePaisa)}</td>
+                  <td>
+                    {imageCounts.get(p.id) ?? 0}
+                    {tally?.queued ? <span class="muted"> · {tally.queued} encoding</span> : null}
+                    {tally?.failed ? <span class="fail"> · {tally.failed} failed</span> : null}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
       {rows.length === 0 ? <p class="muted">No products yet.</p> : null}
     </AdminLayout>,
   )

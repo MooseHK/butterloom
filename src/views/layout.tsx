@@ -85,13 +85,13 @@ export function AdminLayout(
 
 const css = `
   :root { color-scheme: light dark; }
-  * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; min-width: 0; }
   header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px;
     padding: 12px 20px; border-bottom: 1px solid #8883; }
   header a { text-decoration: none; color: inherit; }
   header .wm { font-weight: 600; }
-  header nav { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+  header nav { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
   header nav a { padding-bottom: 2px; border-bottom: 2px solid transparent; color: #8889; }
   header nav a:hover { color: inherit; }
   /* The current section, named for assistive tech and shown to everyone else.
@@ -102,34 +102,43 @@ const css = `
   .back { display: inline-block; margin: 4px 0 -4px; font-size: 13px; color: #8889;
     text-decoration: none; }
   .back:hover { color: inherit; }
-  main { max-width: 60rem; margin: 0 auto; padding: 20px; }
+  main { max-width: 60rem; margin: 0 auto; padding: 20px; min-width: 0; }
   h1 { font-size: 1.4rem; }
-  form { display: grid; gap: 12px; max-width: 34rem; margin: 16px 0 28px; }
-  label { display: grid; gap: 4px; font-weight: 600; }
-  input, textarea, button { font: inherit; padding: 8px; border: 1px solid #8886; border-radius: 6px; background: transparent; color: inherit; }
+  form { display: grid; gap: 12px; max-width: 34rem; margin: 16px 0 28px; width: 100%; }
+  label { display: grid; gap: 4px; font-weight: 600; min-width: 0; }
+  input, textarea, button { font: inherit; padding: 8px; border: 1px solid #8886; border-radius: 6px; background: transparent; color: inherit; max-width: 100%; box-sizing: border-box; }
+  input, textarea { width: 100%; min-width: 0; }
   button { cursor: pointer; font-weight: 600; }
-  table { border-collapse: collapse; width: 100%; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; margin: 16px 0; }
+  table { border-collapse: collapse; width: 100%; min-width: 480px; }
   th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #8883; }
   .gallery { display: flex; flex-wrap: wrap; gap: 14px; list-style: none; padding: 0; }
-  .gallery img { width: 180px; height: auto; border-radius: 6px; display: block; }
+  .gallery img { width: 180px; max-width: 100%; height: auto; border-radius: 6px; display: block; }
   /* The bulk form is a table of rows, not a single column of fields, so it
      takes the whole measure rather than the 34rem a one-product form wants. */
-  form.bulk { max-width: none; }
+  form.bulk { max-width: none; width: 100%; }
   .row { display: grid; grid-template-columns: 2fr 1fr; gap: 10px 14px;
-    padding: 12px; border: 1px solid #8883; border-radius: 8px; }
+    padding: 12px; border: 1px solid #8883; border-radius: 8px; min-width: 0; }
   .row + .row { margin-top: 10px; }
   .row .span { grid-column: 1 / -1; }
   .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; }
   .queue { display: grid; gap: 8px; margin: 0 0 20px; padding: 0; list-style: none; }
-  .queue li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .queue li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; word-break: break-word; }
   .queue form { margin: 0; }
   .cards { display: grid; gap: 14px; padding: 0; list-style: none;
-    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
   .cards li { padding: 14px 16px; border: 1px solid #8883; border-radius: 8px; }
   .cards h2 { margin: 0 0 4px; font-size: 1.1rem; }
   .cards p { margin: 0 0 6px; }
   .fail { color: #d33; }
-  .notice { padding: 10px 12px; border-radius: 6px; border: 1px solid #8886; }
+  .notice { padding: 10px 12px; border-radius: 6px; border: 1px solid #8886; overflow-wrap: anywhere; word-break: break-word; }
   .notice.error { border-color: #d33; }
   .muted { color: #8889; }
+
+  @media (max-width: 640px) {
+    main { padding: 16px 14px; }
+    header { padding: 12px 14px; }
+    .row { grid-template-columns: 1fr; }
+    .row .span { grid-column: auto; }
+  }
 `
