@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#fbf8f5;color:#22201e;font:15px/1.55 system-ui,-apple-system,sans-serif}
+    a{color:#22201e;text-decoration:none;border-bottom:1px solid #b5aca2}
+    a:hover{color:#7a5c3e;border-color:#7a5c3e}
+    .screen{position:relative;width:390px;min-height:844px;display:flex;flex-direction:column;background:#fbf8f5}
+    .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;height:56px;padding:0 16px;border-bottom:1px solid #ded6cd;flex:none}
+    .mark{font:600 17px/1 ui-serif,Georgia,serif;letter-spacing:.14em;text-transform:uppercase}
+    .cart{display:flex;align-items:center;gap:7px;height:44px;padding:0 8px;font-size:13px}
+    .pad{padding:16px;display:flex;flex-direction:column;gap:16px}
+    .top{display:flex;flex-direction:column;gap:8px}
+    h1{margin:0;font:600 22px/1.25 ui-serif,Georgia,serif}
+    h2{margin:0;font:600 13px/1.3 system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#6f665e}
+    .ref{margin:0;font:400 15px/1.4 ui-serif,Georgia,serif}
+    .note{display:flex;flex-direction:column;gap:7px;padding:14px;border:1px solid #ded6cd;border-radius:3px;background:#fff}
+    .note p{margin:0;font-size:14px}
+    .chip{align-self:flex-start;padding:3px 8px;border:1px solid #c9c0b6;border-radius:2px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6f665e}
+    .muted{margin:0;color:#6f665e;font-size:13px}
+    .foot{margin-top:auto;padding:16px;border-top:1px solid #ded6cd;color:#8a8078;font-size:12px;flex:none}
+  </style>
+</helmet>
+<div class="screen">
+  <div class="bar">
+    <span class="mark">Butterloom</span>
+    <span class="cart">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#22201e" stroke-width="1.4" stroke-linejoin="round">
+        <path d="M6.5 6.5V5A3 3 0 0 1 9.5 2h1A3 3 0 0 1 13.5 5v1.5"></path>
+        <path d="M3.6 6.5h12.8L15.4 18H4.6L3.6 6.5Z"></path>
+      </svg>
+      Cart
+    </span>
+  </div>
+  <div class="pad">
+    <div class="top">
+      <svg width="26" height="26" viewBox="0 0 20 20" fill="none" stroke="#22201e" stroke-width="1.4" stroke-linecap="round">
+        <path d="M4 10.5 8 14.5 16 6"></path>
+      </svg>
+      <h1>Order placed</h1>
+      <p class="ref">Order BL-1042 · two pieces · ৳8,630</p>
+    </div>
+
+    <div class="note">
+      <h2>Your payment</h2>
+      <span class="chip">TrxID received, not yet checked</span>
+      <p>You sent TrxID 9F2K1XYZ4B. We check it against our bKash statement by hand, and your pieces stay held for you meanwhile — for [HOLD WINDOW · not yet decided].</p>
+    </div>
+
+    <div class="note">
+      <h2>Your parcel</h2>
+      <span class="chip">With us, not yet dispatched</span>
+      <p>It goes to Pathao in tomorrow's dispatch. We SMS you the courier's tracking number when it is handed over.</p>
+    </div>
+
+    <p class="muted">There is no account to log in to. Keep this order number — updates come by SMS to 01XXXXXXXXX.</p>
+    <p class="muted"><a href="#">Back to the collection</a></p>
+  </div>
+  <div class="foot">Butterloom · Delivered across Bangladesh</div>
+</div>
+</x-dc>
+</body>
+</html>
