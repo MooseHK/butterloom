@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { formatPaisa } from '../lib/money.js'
-import { StorefrontLayout } from '../views/storefront.js'
+import { Seal, StorefrontLayout } from '../views/storefront.js'
 import { Picture } from '../views/picture.js'
 import { findProductBySlug, listCatalogue } from './queries.js'
 import type { ImageWithDerivatives } from './queries.js'
@@ -11,23 +11,44 @@ export const storefront = new Hono()
 /**
  * Sizes tell the browser how wide the image will render before any CSS has
  * been parsed, which is what lets it pick a rung of the ladder on the first
- * pass. They have to track the grid in views/storefront.tsx.
+ * pass. They have to track the grid and the gallery in views/storefront.tsx,
+ * and the percentages resolve against main's content box — 100vw − 40px of
+ * padding, capped at 40rem — not against the viewport. Working from that:
+ *
+ * - Cards are auto-fill from a 150px minimum with a 14px gap, so two columns
+ *   need 314px of content box: one column below a 354px viewport, two up to
+ *   517px, three from 518px, and 190px once main hits its 640px cap.
+ * - A gallery frame is 85% of that content box, i.e. 85vw − 34px, which is 510px
+ *   at the cap. Claiming a bare 85vw overstates it by 11% on a phone and buys a
+ *   whole extra rung of image for nothing.
  */
-const cardSizes = '(min-width: 820px) 240px, (min-width: 520px) 30vw, 45vw'
-const shotSizes = '(min-width: 820px) 600px, 100vw'
+const cardSizes =
+  '(min-width: 640px) 190px, (min-width: 518px) 30vw, (min-width: 354px) 45vw, calc(100vw - 40px)'
+const shotSizes = '(min-width: 640px) 510px, calc(85vw - 34px)'
+
+/** The one line of prose on the front page, and the page's own meta description. */
+const tagline = 'Handwoven South Asian ethnic fashion, delivered across Bangladesh.'
 
 storefront.get('/', (c) => {
   const listings = listCatalogue()
   return c.html(
     <StorefrontLayout
       title="Butterloom — South Asian ethnic fashion"
-      description="Handwoven South Asian ethnic fashion, delivered across Bangladesh."
+      description={tagline}
       canonicalPath="/"
     >
       <main>
-        <h1>The collection</h1>
+        <div class="brand">
+          <Seal alt="Butterloom — woven in comfort" />
+          <p>{tagline}</p>
+        </div>
+        <div class="head">
+          <h1>The collection</h1>
+        </div>
         {listings.length === 0 ? (
-          <p class="muted">Nothing here yet. New pieces are on their way.</p>
+          <div class="detail">
+            <p class="muted">Nothing here yet. New pieces are on their way.</p>
+          </div>
         ) : (
           <ul class="grid">
             {listings.map(({ product, cover }, index) => (
@@ -70,32 +91,37 @@ storefront.get('/p/:slug', (c) => {
       canonicalPath={`/p/${product.slug}`}
     >
       <main>
-        <div class="product">
-          <Shots images={images} />
-          <div>
-            <h1>{product.title}</h1>
-            <p class="price">{formatPaisa(product.pricePaisa)}</p>
-            {product.description ? <p class="description">{product.description}</p> : null}
-            {/*
-              No availability is rendered here, and none ever should be: this
-              page is cached at the edge, and ADR-0007 keeps the promise that a
-              stale page cannot assert something false about stock by having it
-              assert nothing. Stock is resolved at placement, against Reservation.
-            */}
-            <p class="muted">Cash on delivery, or bKash. Delivered across Bangladesh.</p>
-          </div>
+        <Shots images={images} />
+        <div class="detail">
+          <h1>{product.title}</h1>
+          <p class="price">{formatPaisa(product.pricePaisa)}</p>
+          {product.description ? <p class="description">{product.description}</p> : null}
+          {/*
+            No availability is rendered here, and none ever should be: this
+            page is cached at the edge, and ADR-0007 keeps the promise that a
+            stale page cannot assert something false about stock by having it
+            assert nothing. Stock is resolved at placement, against Reservation.
+          */}
+          {/* The strip above and the footer below already say where we deliver;
+              what belongs at the point of decision is how you can pay. */}
+          <p class="muted">Cash on delivery, or bKash.</p>
         </div>
       </main>
     </StorefrontLayout>,
   )
 })
 
+/**
+ * A horizontal scroll-snap row, not a stack. Stacking put the price a screen
+ * and a half below the fold on a phone, which was the finding of the design
+ * pass; snapping is CSS, so the fix costs no script.
+ */
 function Shots(props: { images: ImageWithDerivatives[] }) {
   if (props.images.length === 0) {
     return <div class="placeholder">No photograph yet</div>
   }
   return (
-    <ul class="shots">
+    <ul class="gallery">
       {props.images.map(({ image, derivatives }, index) => (
         <li>
           <Picture
@@ -121,10 +147,14 @@ export function notFound(c: Context) {
   return c.html(
     <StorefrontLayout title="Not found — Butterloom" canonicalPath={c.req.path}>
       <main>
-        <h1>Not found</h1>
-        <p class="muted">
-          That page does not exist. <a href="/">Back to the collection</a>.
-        </p>
+        <div class="head">
+          <h1>Not found</h1>
+        </div>
+        <div class="detail">
+          <p class="muted">
+            That page does not exist. <a href="/">Back to the collection</a>.
+          </p>
+        </div>
       </main>
     </StorefrontLayout>,
     404,

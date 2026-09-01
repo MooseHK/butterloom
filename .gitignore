@@ -1,2 +1,7 @@
 node_modules/
 var/
+
+# The design canvas is assembled from the .dc.html artboards beside it and comes
+# out as a ~2.5MB single-file bundle with every artboard inlined. The artboards
+# are the source; the bundle is a build artefact.
+docs/design/mobile-wireframes/butterloom-mobile-wireframes.html

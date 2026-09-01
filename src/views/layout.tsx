@@ -1,3 +1,4 @@
+import { raw } from 'hono/html'
 import type { PropsWithChildren } from 'hono/jsx'
 
 /**
@@ -7,23 +8,33 @@ import type { PropsWithChildren } from 'hono/jsx'
  */
 export function AdminLayout(props: PropsWithChildren<{ title: string }>) {
   return (
-    <html lang="en">
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>{props.title} — Butterloom admin</title>
-        <style>{css}</style>
-      </head>
-      <body>
-        <header>
-          <a href="/admin/products">Butterloom admin</a>
-        </header>
-        <main>
-          <h1>{props.title}</h1>
-          {props.children}
-        </main>
-      </body>
-    </html>
+    <>
+      {/* Same reason as the storefront: without it the page is in quirks mode. */}
+      {raw('<!doctype html>')}
+      <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>{props.title} — Butterloom admin</title>
+          {/*
+            This sheet has no quote, < or > in it, so rendering it as a child is
+            harmless today — but it is the same trap the storefront fell into, so
+            it is written the same way rather than left armed for whoever adds a
+            quoted font name here.
+          */}
+          <style dangerouslySetInnerHTML={{ __html: css }} />
+        </head>
+        <body>
+          <header>
+            <a href="/admin/products">Butterloom admin</a>
+          </header>
+          <main>
+            <h1>{props.title}</h1>
+            {props.children}
+          </main>
+        </body>
+      </html>
+    </>
   )
 }
 

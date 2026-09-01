@@ -1,0 +1,86 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f2eee6;color:#33383a;font:15.5px/1.7 ui-serif,Georgia,"Times New Roman",serif;-webkit-font-smoothing:antialiased}
+    a{color:inherit;text-decoration:none}
+    a:hover{color:#62635c}
+    .screen{position:relative;width:390px;min-height:844px;display:flex;flex-direction:column;background:#f2eee6}
+    .promo{display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;min-height:34px;padding:6px 16px;text-align:center;background:#33383a;color:#eee9e1;font:400 9.5px/1 system-ui,sans-serif;letter-spacing:.17em;text-transform:uppercase;flex:none}
+    .promo i{width:3px;height:3px;border-radius:50%;background:#a3a194;flex:none}
+    .bar{display:flex;align-items:center;justify-content:center;height:58px;padding:0 14px;border-bottom:1px solid #e2ddd1;flex:none}
+    .wm{display:flex;align-items:center;gap:9px}
+    .wm b{font:400 14px/1 ui-serif,Georgia,serif;letter-spacing:.26em;text-transform:uppercase}
+    .dot{width:3px;height:3px;border-radius:50%;background:#a3a194;flex:none}
+
+    .hero{display:flex;flex-direction:column;align-items:center;gap:16px;padding:32px 28px 30px;border-bottom:1px solid #e2ddd1;text-align:center;background-color:#f2eee6;background-image:repeating-linear-gradient(0deg,#eee9e1 0 1px,transparent 1px 28px),repeating-linear-gradient(90deg,#eee9e1 0 1px,transparent 1px 28px)}
+    .seal{width:124px;height:124px;border-radius:50%;overflow:hidden;background:#f2eee6}
+    .seal img{width:100%;height:auto;display:block}
+    h1{margin:0;font:400 28px/1.15 ui-serif,Georgia,serif}
+    .ref{margin:0;font:400 10.5px/1 system-ui,sans-serif;letter-spacing:.15em;text-transform:uppercase;color:#6c6b64}
+
+    .blocks{display:flex;flex-direction:column;padding:0 20px}
+    .block{display:flex;flex-direction:column;gap:10px;padding:24px 0;border-bottom:1px solid #e2ddd1}
+    .block .k{font:400 11px/1 system-ui,sans-serif;letter-spacing:.17em;text-transform:uppercase}
+    .block .state{align-self:flex-start;display:flex;align-items:center;gap:8px;padding:5px 10px;border:1px solid #dcd6c9;border-radius:2px;font:400 9.5px/1 system-ui,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#62635c}
+    .block .state i{width:4px;height:4px;border-radius:50%;background:#a3a194}
+    .block p{margin:0;color:#62635c;font-size:14.5px;line-height:1.7}
+    .block p strong{font-weight:400;color:#33383a;border-bottom:1px solid #cfc8b9}
+
+    .after{display:flex;flex-direction:column;gap:16px;padding:24px 20px 0}
+    .after p{margin:0;color:#6c6b64;font-size:13px;line-height:1.65}
+    .btn{display:flex;align-items:center;justify-content:center;min-height:52px;border:1px solid #cfc8b9;border-radius:2px;background:transparent;color:#33383a;font:600 11.5px/1 system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase}
+
+    .foot{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:11px;padding:34px 20px 30px;border-top:1px solid #e2ddd1;text-align:center}
+    .foot .tag{font:400 10px/1 system-ui,sans-serif;letter-spacing:.22em;text-transform:uppercase;color:#6c6b64}
+    .foot .fineprint{margin:0;color:#6c6b64;font-size:12.5px}
+  </style>
+</helmet>
+<div class="screen">
+  <div class="promo">Cash on delivery<i></i>Dispatched daily</div>
+  <div class="bar">
+    <span class="wm"><i class="dot"></i><b>Butterloom</b><i class="dot"></i></span>
+  </div>
+
+  <div class="hero">
+    <div class="seal">
+      <img src="mark.png" width="460" height="460" alt="Butterloom — woven in comfort">
+    </div>
+    <h1>Order placed</h1>
+    <p class="ref">Order BL-1042 · two pieces · ৳8,630</p>
+  </div>
+
+  <div class="blocks">
+    <div class="block">
+      <span class="k">Your payment</span>
+      <span class="state"><i></i>TrxID received, not yet checked</span>
+      <p>You sent TrxID <strong>9F2K1XYZ4B</strong>. We check it against our bKash statement by hand, and your pieces stay held for you meanwhile — for [HOLD WINDOW · not yet decided].</p>
+    </div>
+    <div class="block">
+      <span class="k">Your parcel</span>
+      <span class="state"><i></i>With us, not yet dispatched</span>
+      <p>It goes to Pathao in tomorrow's dispatch. We send you the courier's tracking number by SMS when it is handed over.</p>
+    </div>
+  </div>
+
+  <div class="after">
+    <p>There is no account to log in to. Keep this order number — updates come by SMS to 01XXXXXXXXX.</p>
+    <div class="btn">Back to the collection</div>
+  </div>
+
+  <div class="foot">
+    <span class="wm"><i class="dot"></i><b>Butterloom</b><i class="dot"></i></span>
+    <span class="tag">Woven in comfort</span>
+    <p class="fineprint">Delivered across Bangladesh · Cash on delivery, or bKash</p>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
