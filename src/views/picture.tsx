@@ -1,5 +1,5 @@
 import { config } from '../config.js'
-import type { ImageDerivative, ProductImage } from '../db/schema.js'
+import type { ImageDerivative } from '../db/schema.js'
 import { formatOrder, mimeTypes } from '../images/ladder.js'
 
 export function derivativeUrl(d: Pick<ImageDerivative, 'storageKey'>): string {
@@ -15,7 +15,12 @@ export function derivativeUrl(d: Pick<ImageDerivative, 'storageKey'>): string {
  * shift while images arrive is the visible cost of omitting them.
  */
 export function Picture(props: {
-  image: ProductImage
+  /**
+   * Anything that carries alt text: a product photograph or a site slot. The
+   * ladder below is identical either way, so this is the only field the
+   * component has ever actually read off the parent row.
+   */
+  image: { altText: string }
   derivatives: ImageDerivative[]
   sizes: string
   loading?: 'lazy' | 'eager'

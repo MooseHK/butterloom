@@ -4,7 +4,8 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { db } from '../db/client.js'
-import { imageDerivatives, productImages } from '../db/schema.js'
+import { imageDerivatives, productImages, siteImages } from '../db/schema.js'
+import type { SiteImageSlot } from '../db/schema.js'
 import { fileExtensions, formatOrder, quality, widthsFor } from './ladder.js'
 import { fileStore, shardedKey } from './storage.js'
 import { EncoderError, encodeDerivative, probe, supportedFormats } from './vips.js'
@@ -34,22 +35,35 @@ export interface UploadResult {
 
 export class UploadError extends Error {}
 
+/** One rung, encoded and stored, before anything knows what owns it. */
+type LadderRow = Omit<typeof imageDerivatives.$inferInsert, 'imageId' | 'siteImageId'>
+
+interface EncodedUpload {
+  rows: LadderRow[]
+  width: number
+  height: number
+  originalSha: string
+  skippedFormats: DerivativeFormat[]
+}
+
 /**
- * Take one uploaded photograph, generate the whole derivative ladder, and
- * record it. ADR-0007 puts this work at upload time precisely so that no
- * request path ever encodes an image.
+ * Take one uploaded photograph and generate the whole derivative ladder.
+ * ADR-0007 puts this work at upload time precisely so that no request path ever
+ * encodes an image.
  *
  * The original is written to storage too — not to be served, but because
  * re-cutting the ladder (open decision #5 is still open) must not require
  * asking the operator to re-upload.
+ *
+ * Owner-agnostic: encoding a hero and encoding a product photograph are the
+ * same work, and the two callers below differ only in which row they hang the
+ * result off. Nothing here writes to the database.
  */
-export async function ingestProductImage(input: {
-  productId: number
+async function encodeLadder(input: {
   filename: string
   contentType: string
   bytes: Buffer
-  altText: string
-}): Promise<UploadResult> {
+}): Promise<EncodedUpload> {
   if (!acceptedTypes.has(input.contentType)) {
     throw new UploadError(`Unsupported image type: ${input.contentType || 'unknown'}`)
   }
@@ -83,7 +97,7 @@ export async function ingestProductImage(input: {
     }
 
     const widths = widthsFor(dimensions.width)
-    const rows: (typeof imageDerivatives.$inferInsert)[] = []
+    const rows: LadderRow[] = []
 
     for (const format of formatOrder) {
       if (!formats.has(format)) continue
@@ -99,7 +113,6 @@ export async function ingestProductImage(input: {
         }
         const actual = await probe(out)
         rows.push({
-          imageId: 0, // replaced once the parent row exists
           format,
           width: actual.width,
           height: actual.height,
@@ -116,37 +129,102 @@ export async function ingestProductImage(input: {
 
     await fileStore.put(shardedKey(originalSha, 'original'), input.bytes)
 
-    // One transaction: an image row without its ladder would render a broken
-    // <picture>, and SQLite's single writer (ADR-0006) makes this trivial.
-    const imageId = db.transaction((tx) => {
-      const [row] = tx
-        .insert(productImages)
-        .values({
-          productId: input.productId,
-          altText: input.altText,
-          originalFilename: path.basename(input.filename).slice(0, 200),
-          originalSha256: originalSha,
-          width: dimensions.width,
-          height: dimensions.height,
-          position: nextPosition(tx, input.productId),
-        })
-        .returning({ id: productImages.id })
-        .all()
-      if (!row) throw new Error('insert returned no row')
-      tx.insert(imageDerivatives)
-        .values(rows.map((r) => ({ ...r, imageId: row.id })))
-        .run()
-      return row.id
-    })
-
     return {
-      imageId,
-      derivatives: rows.length,
+      rows,
+      width: dimensions.width,
+      height: dimensions.height,
+      originalSha,
       skippedFormats: formatOrder.filter((f) => !formats.has(f)),
     }
   } finally {
     await fs.rm(work, { recursive: true, force: true })
   }
+}
+
+/** The uploaded name, trimmed to what the column holds. */
+function storedFilename(filename: string): string {
+  return path.basename(filename).slice(0, 200)
+}
+
+/**
+ * A photograph belonging to a product, appended to the end of its gallery.
+ */
+export async function ingestProductImage(input: {
+  productId: number
+  filename: string
+  contentType: string
+  bytes: Buffer
+  altText: string
+}): Promise<UploadResult> {
+  const encoded = await encodeLadder(input)
+
+  // One transaction: an image row without its ladder would render a broken
+  // <picture>, and SQLite's single writer (ADR-0006) makes this trivial.
+  const imageId = db.transaction((tx) => {
+    const [row] = tx
+      .insert(productImages)
+      .values({
+        productId: input.productId,
+        altText: input.altText,
+        originalFilename: storedFilename(input.filename),
+        originalSha256: encoded.originalSha,
+        width: encoded.width,
+        height: encoded.height,
+        position: nextPosition(tx, input.productId),
+      })
+      .returning({ id: productImages.id })
+      .all()
+    if (!row) throw new Error('insert returned no row')
+    tx.insert(imageDerivatives)
+      .values(encoded.rows.map((r) => ({ ...r, imageId: row.id })))
+      .run()
+    return row.id
+  })
+
+  return { imageId, derivatives: encoded.rows.length, skippedFormats: encoded.skippedFormats }
+}
+
+/**
+ * A photograph filling one of the site's editorial slots. A slot holds one
+ * image, so this replaces rather than appends: the previous row is deleted and
+ * its ladder goes with it on the cascade.
+ *
+ * The derivative blobs are deliberately left in storage. They are content-
+ * addressed and immutable (ADR-0007), which is what makes the far-future cache
+ * header safe — a URL that has been served must keep resolving, and re-uploading
+ * the same photograph re-uses the bytes rather than rewriting them.
+ */
+export async function ingestSiteImage(input: {
+  slot: SiteImageSlot
+  filename: string
+  contentType: string
+  bytes: Buffer
+  altText: string
+}): Promise<UploadResult> {
+  const encoded = await encodeLadder(input)
+
+  const imageId = db.transaction((tx) => {
+    tx.delete(siteImages).where(eq(siteImages.slot, input.slot)).run()
+    const [row] = tx
+      .insert(siteImages)
+      .values({
+        slot: input.slot,
+        altText: input.altText,
+        originalFilename: storedFilename(input.filename),
+        originalSha256: encoded.originalSha,
+        width: encoded.width,
+        height: encoded.height,
+      })
+      .returning({ id: siteImages.id })
+      .all()
+    if (!row) throw new Error('insert returned no row')
+    tx.insert(imageDerivatives)
+      .values(encoded.rows.map((r) => ({ ...r, siteImageId: row.id })))
+      .run()
+    return row.id
+  })
+
+  return { imageId, derivatives: encoded.rows.length, skippedFormats: encoded.skippedFormats }
 }
 
 function nextPosition(

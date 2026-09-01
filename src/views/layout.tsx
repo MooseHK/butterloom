@@ -6,7 +6,15 @@ import type { PropsWithChildren } from 'hono/jsx'
  * admin is behind auth and never edge-cached, so a second round trip for CSS
  * buys nothing.
  */
-export function AdminLayout(props: PropsWithChildren<{ title: string }>) {
+export function AdminLayout(
+  props: PropsWithChildren<{
+    title: string
+    /** Which nav item is the current one. Omitted on pages that are in neither. */
+    section?: 'products' | 'site-images'
+    /** A way back up one level, for pages reached from a list. */
+    back?: { href: string; label: string }
+  }>,
+) {
   return (
     <>
       {/* Same reason as the storefront: without it the page is in quirks mode. */}
@@ -25,10 +33,44 @@ export function AdminLayout(props: PropsWithChildren<{ title: string }>) {
           <style dangerouslySetInnerHTML={{ __html: css }} />
         </head>
         <body>
+          {/*
+            Every section reachable from every page. Before this the only link
+            in the chrome was the wordmark, so moving between products and the
+            site images — or back from the storefront — meant the browser's own
+            back button, which is not navigation, it is the absence of it.
+          */}
           <header>
-            <a href="/admin/products">Butterloom admin</a>
+            <a class="wm" href="/admin/products">
+              Butterloom admin
+            </a>
+            <nav>
+              <a
+                href="/admin/products"
+                aria-current={props.section === 'products' ? 'page' : undefined}
+              >
+                Products
+              </a>
+              <a
+                href="/admin/site-images"
+                aria-current={props.section === 'site-images' ? 'page' : undefined}
+              >
+                Site images
+              </a>
+              {/*
+                A new tab on purpose: the storefront carries no admin chrome, so
+                following it in this one is a one-way trip out of the admin.
+              */}
+              <a class="out" href="/" target="_blank" rel="noopener">
+                Storefront ↗
+              </a>
+            </nav>
           </header>
           <main>
+            {props.back ? (
+              <a class="back" href={props.back.href}>
+                ← {props.back.label}
+              </a>
+            ) : null}
             <h1>{props.title}</h1>
             {props.children}
           </main>
@@ -42,8 +84,21 @@ const css = `
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.5 system-ui, sans-serif; }
-  header { padding: 12px 20px; border-bottom: 1px solid #8883; }
-  header a { font-weight: 600; text-decoration: none; color: inherit; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px;
+    padding: 12px 20px; border-bottom: 1px solid #8883; }
+  header a { text-decoration: none; color: inherit; }
+  header .wm { font-weight: 600; }
+  header nav { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+  header nav a { padding-bottom: 2px; border-bottom: 2px solid transparent; color: #8889; }
+  header nav a:hover { color: inherit; }
+  /* The current section, named for assistive tech and shown to everyone else.
+     Colour alone would not carry it. */
+  header nav a[aria-current="page"] { color: inherit; font-weight: 600;
+    border-bottom-color: currentColor; }
+  header nav a.out { margin-left: auto; }
+  .back { display: inline-block; margin: 4px 0 -4px; font-size: 13px; color: #8889;
+    text-decoration: none; }
+  .back:hover { color: inherit; }
   main { max-width: 60rem; margin: 0 auto; padding: 20px; }
   h1 { font-size: 1.4rem; }
   form { display: grid; gap: 12px; max-width: 34rem; margin: 16px 0 28px; }
