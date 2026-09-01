@@ -132,3 +132,8 @@ An axis a customer can filter a listing by, together with the values that exist
 somewhere in the part of the catalogue being listed. Scope, not selection: the
 values do not narrow as filters are applied, and none of them carries a count.
 _Avoid_: filter (a filter is what a customer picks from a facet), refinement
+
+**Recently Viewed**: The last few Products whose pages a visitor has opened, held
+in that visitor's own browser and never on the server. Products, not Variants —
+a visitor opens a page, not a configuration.
+_Avoid_: browsing history, view history

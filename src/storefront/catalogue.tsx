@@ -12,6 +12,7 @@ import {
   findSiteImage,
   listCategories,
   listProducts,
+  listProductsBySlugs,
 } from './queries.js'
 import type { Facet, ImageWithDerivatives, ProductListing } from './queries.js'
 import {
@@ -314,6 +315,40 @@ function listing(c: Context, basePath: string, category: Category | null) {
   )
 }
 
+/** The shape slugify() produces — never anything a visitor's browser typed. */
+const slugPattern = /^[a-z0-9-]{1,80}$/
+
+/**
+ * The recently-viewed rail's own data, as an edge-cacheable fragment rather
+ * than a route the CDN sees a fresh URL for on every visit. `?p=` is sorted
+ * before it reaches here, so a visitor who saw A then B and one who saw B
+ * then A share one cache entry; the client script (below) restores whichever
+ * order that visitor actually saw them in. There is deliberately no 301 here
+ * to a canonical form the way `listing()` above has one — the only caller is
+ * our own script, which already sorts, dedupes and caps the list, so a
+ * redirect would just add a round trip for traffic that does not exist. The
+ * four-item cap is applied before the query runs, not after, so `?p=` cannot
+ * be used to build an arbitrarily large `IN` clause.
+ *
+ * Nothing here echoes the query string back: the only thing rendered is rows
+ * `listProductsBySlugs` returned from the database, which Hono JSX escapes
+ * like any other child, and `p` itself never reaches a query except filtered
+ * through the slug whitelist and packed into a parameterised `inArray`.
+ */
+storefront.get('/recently-viewed', (c) => {
+  const slugs = [...new Set((c.req.query('p') ?? '').split(',').map((s) => s.trim()))]
+    .filter((s) => s.length > 0 && slugPattern.test(s))
+    .sort()
+    .slice(0, 4)
+
+  const listings = listProductsBySlugs(slugs)
+
+  // Always 200, even with nothing to show: edgeCacheable only marks a 200
+  // cacheable, and an empty rail for a set of slugs that all left the
+  // catalogue is exactly the answer worth caching rather than re-deriving.
+  return c.html(<>{listings.map((entry) => <Card listing={entry} sizes={railSizes} eager={false} />)}</>)
+})
+
 storefront.get('/p/:slug', (c) => {
   const detail = findProductBySlug(c.req.param('slug'))
   if (!detail) return c.notFound()
@@ -394,6 +429,20 @@ storefront.get('/p/:slug', (c) => {
               what cash on delivery actually asks of the customer. */}
           <p class="muted">Nothing to pay now — you pay the courier at the door.</p>
         </div>
+        {/*
+          Empty and hidden in the bytes the CDN caches, and it has to stay that
+          way: this page is served from the Dhaka PoP, so one visitor's rail
+          rendered here would be handed to the next. It is filled by script
+          from the /recently-viewed fragment below, or never — a visitor with
+          script disabled or nothing in localStorage simply never sees it.
+          data-slug carries this page's own slug to that script without a
+          second lookup; the script strips it from the list before recording
+          the view so a product's own page never appears in its own rail.
+        */}
+        <section class="sec" id="recent" hidden data-slug={product.slug}>
+          <h2>Recently viewed</h2>
+          <ul class="rail" id="recent-rail" />
+        </section>
       </main>
       <script
         dangerouslySetInnerHTML={{
@@ -432,6 +481,7 @@ storefront.get('/p/:slug', (c) => {
           `,
         }}
       />
+      <script dangerouslySetInnerHTML={{ __html: recentlyViewedScript }} />
     </StorefrontLayout>,
   )
 })
@@ -439,7 +489,10 @@ storefront.get('/p/:slug', (c) => {
 function Card(props: { listing: ProductListing; sizes: string; eager: boolean }) {
   const { product, cover } = props.listing
   return (
-    <li class="card">
+    // data-slug is only read by the recently-viewed fragment (its script
+    // re-orders cards by it) but is cheap enough to emit on every card
+    // rather than forking this component for one caller.
+    <li class="card" data-slug={product.slug}>
       <a href={`/p/${product.slug}`}>
         {cover ? (
           <Picture
@@ -526,3 +579,65 @@ export function notFound(c: Context) {
     404,
   )
 }
+
+/**
+ * Records this page's own product into localStorage and, if there is anything
+ * left to show, fills the #recent section from the /recently-viewed fragment.
+ * ADR-0007's edge cache is why this exists at all: a product page never sees
+ * most of its own GETs at the origin, so a view cannot be recorded there, and
+ * a per-visitor rail cannot be rendered into HTML every visitor shares.
+ *
+ * Only slugs are kept, never title/price/image: a stale price sitting in a
+ * visitor's browser is a promise about money, and a deleted product would
+ * become a dead link. Slugs are generated once at creation and never edited,
+ * so they are a stable key to keep. localStorage rather than a cookie: a
+ * cookie rides every request including CDN image requests, and this has no
+ * need to be readable before paint.
+ *
+ * 8 slugs are kept but only 4 shown, so dropping this page's own product still
+ * leaves a full rail rather than three. Every localStorage call is wrapped —
+ * Safari private mode throws on setItem, and some Android WebViews block
+ * storage outright — so a visitor either sees the feature or sees nothing,
+ * never a broken page. The view is recorded synchronously on load, but the
+ * fetch itself waits for the window 'load' event, so the fragment never
+ * competes with the product gallery for bandwidth on a slow connection —
+ * nothing above the fold depends on it. Anything read back that is not a
+ * slug is dropped immediately: that keeps a junk value out of both the
+ * request to /recently-viewed and the querySelector call below it, where a
+ * malformed selector would throw and take the whole handler down with it.
+ *
+ * The fragment always comes back with its slugs sorted, per the comment on
+ * the route itself, so recency order is something this script restores
+ * itself rather than something the cache entry can vary on.
+ */
+const recentlyViewedScript = `
+  (function () {
+    var sec = document.getElementById('recent');
+    if (!sec || !window.localStorage) return;
+    var slug = sec.dataset.slug, KEY = 'bl_recent', ok = /^[a-z0-9-]{1,80}$/;
+    var list = [];
+    try { list = JSON.parse(localStorage.getItem(KEY)) || [] } catch (e) {}
+    var keep = (Array.isArray(list) ? list : []).filter(function (s) {
+      return typeof s === 'string' && s !== slug && ok.test(s);
+    });
+    try { localStorage.setItem(KEY, JSON.stringify([slug].concat(keep).slice(0, 8))) } catch (e) {}
+
+    var show = keep.slice(0, 4);
+    if (!show.length) return;
+    addEventListener('load', function () {
+      fetch('/recently-viewed?p=' + show.slice().sort().join(','))
+        .then(function (r) { return r.ok ? r.text() : '' })
+        .then(function (html) {
+          if (!html.trim()) return;
+          var rail = document.getElementById('recent-rail');
+          rail.innerHTML = html;
+          for (var i = show.length - 1; i >= 0; i--) {
+            var el = rail.querySelector('[data-slug="' + show[i] + '"]');
+            if (el) rail.insertBefore(el, rail.firstChild);
+          }
+          if (rail.children.length) sec.hidden = false;
+        })
+        .catch(function () {});
+    });
+  })();
+`

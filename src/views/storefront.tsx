@@ -413,6 +413,12 @@ const css = `
      descendant selector would put a section rule under every product title. */
   .sec > h2 { margin: 0; padding-bottom: 12px; border-bottom: 1px solid var(--hairline);
     font: 400 19px/1.2 ui-serif, Georgia, "Times New Roman", serif; }
+  /* The same trap .cart-badge[hidden] was written for: the UA's [hidden] rule
+     is display:none at the lowest specificity there is, and .sec's own
+     display:flex beats it. Without this override the recently-viewed section
+     paints its heading over an empty rail on every product page, whether or
+     not script ever fills it in. */
+  .sec[hidden] { display: none; }
 
   /* The wireframe photographs its category tiles; a category has no image column
      and nothing plans to give it one, so a tile is type on the ground a

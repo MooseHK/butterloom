@@ -215,6 +215,31 @@ export function listCategories(): CategoryListing[] {
     .map((category) => ({ category, productCount: counts.get(category.id) ?? 0 }))
 }
 
+/**
+ * The products named by a visitor's own "recently viewed" list, in the order
+ * that list gives them — SQLite's `IN` makes no ordering promise, so the rows
+ * are re-sorted here by index into `slugs` rather than trusted to come back in
+ * the order asked for.
+ *
+ * An unknown slug simply drops out rather than erroring: the list this is
+ * called with came out of a visitor's browser, and the product it once named
+ * may have since left the catalogue.
+ */
+export function listProductsBySlugs(slugs: string[]): ProductListing[] {
+  if (slugs.length === 0) return []
+
+  const rows = db.select().from(products).where(inArray(products.slug, slugs)).all()
+  // A repeated slug keeps its first position rather than its last — the row
+  // itself is already deduplicated by SELECT, this only decides where it sorts.
+  const order = new Map<string, number>()
+  slugs.forEach((slug, index) => {
+    if (!order.has(slug)) order.set(slug, index)
+  })
+  rows.sort((a, b) => (order.get(a.slug) ?? 0) - (order.get(b.slug) ?? 0))
+
+  return attachCovers(rows)
+}
+
 export function findCategoryBySlug(slug: string): Category | null {
   const [category] = db.select().from(categories).where(eq(categories.slug, slug)).all()
   return category ?? null

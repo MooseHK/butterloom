@@ -40,6 +40,14 @@ test('an empty cart badge is hidden, not printed as a zero', () => {
   assert.match(shell, /\.cart-badge\[hidden\] \{ display: none; \}/)
 })
 
+test('an empty recently-viewed section is hidden, not painted as a bare heading', () => {
+  // The same trap .cart-badge[hidden] was written for: .sec's own
+  // display:flex beats the UA's [hidden] rule at the lowest specificity there
+  // is. Without the override every product page shows "Recently viewed" over
+  // nothing, whether or not script ever fills the rail in.
+  assert.match(shell, /\.sec\[hidden\] \{ display: none; \}/)
+})
+
 test('the cart count is read from a cookie, never rendered into a cached page', () => {
   // ADR-0007: / and /p/:slug are edge-cached, so their bytes have to be the
   // same for every visitor. A count in the HTML would hand one shopper's cart
