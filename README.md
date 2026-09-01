@@ -2,12 +2,9 @@
 
 Direct-to-consumer South Asian ethnic fashion, selling online in Bangladesh.
 
-Implementation has started. The `index.html` at the root is a superseded static
-prototype — a client-side cart and mock admin over four demo products — kept only
-for reference. Nothing in it is being carried forward.
-
-What runs today: the product record, the image upload pipeline behind it, and
-the customer-facing catalogue and product pages. See [Running the application](#running-the-application).
+Implementation has started. What runs today: the product record, the image
+upload pipeline behind it, and the customer-facing catalogue and product pages.
+See [Running the application](#running-the-application).
 
 ## Where the thinking lives
 
