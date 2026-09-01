@@ -47,3 +47,30 @@ ADR-0006 gives up managed point-in-time recovery, and is only sound if restoring
 from the replicated copy is rehearsed rather than assumed. The drill belongs in the
 operator runbook ADR-0003 requires. Not a design decision, but tracked here because
 forgetting it silently invalidates ADR-0006.
+
+## 7. Facet value ordering
+
+Filter values are listed in the order they were first entered, so S, M, L come
+out in size order only for an operator who happened to type them in that order.
+ADR-0008 records it as a known ceiling rather than a property. **Recommendation:**
+leave it until somebody minds. The fix is a position column on the option value
+and a control to set it, which is more admin than the problem is worth while one
+person enters every option.
+
+## 8. Per-variant pricing
+
+ADR-0008 gives every variant of a product the product's price. Whether a
+Butterloom garment ever prices one size or one colour differently is a
+merchandising question nobody has answered. **Recommendation:** stay with one
+price until a real product needs two. The upgrade is a nullable override on the
+variant plus a `min()` "from" price in the listing; what is expensive is teaching
+the listing to show a price range before anything needs one.
+
+## 9. Whether a product may sit on two shelves
+
+One category per product today (ADR-0008). The case that breaks it is a saree
+that is also a wedding piece, and there is no wedding shelf yet.
+**Recommendation:** stay with one until the second shelf exists as an editorial
+idea rather than as a hypothetical. Migrating to a join table is mechanical; the
+cost is that every "which shelf is this on" answer becomes a list, including the
+front-page tile counts, which today add up to the catalogue.

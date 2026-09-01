@@ -1,7 +1,14 @@
 import { count, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../db/client.js'
-import { orders, productImages, products, siteImageSlots, siteImages } from '../db/schema.js'
+import {
+  categories,
+  orders,
+  productImages,
+  products,
+  siteImageSlots,
+  siteImages,
+} from '../db/schema.js'
 import { countPending } from '../images/queue.js'
 import { AdminLayout } from '../views/layout.js'
 
@@ -17,6 +24,7 @@ export const adminHome = new Hono()
 adminHome.get('/', (c) => {
   const [productCount] = db.select({ n: count() }).from(products).all()
   const [imageCount] = db.select({ n: count() }).from(productImages).all()
+  const [categoryCount] = db.select({ n: count() }).from(categories).all()
   const [filledSlots] = db.select({ n: count() }).from(siteImages).all()
   const [activeOrders] = db
     .select({ n: count() })
@@ -51,6 +59,15 @@ adminHome.get('/', (c) => {
             {queued > 0 ? ` · ${queued} encoding` : ''}
           </p>
           <p>Title, price, stock inventory, description and photographs. Add a batch of them in one form.</p>
+        </li>
+        <li>
+          <h2>
+            <a href="/admin/categories">Categories</a>
+          </h2>
+          <p class="muted">
+            {categoryCount?.n ?? 0} {categoryCount?.n === 1 ? 'shelf' : 'shelves'}
+          </p>
+          <p>The shelves the storefront is browsed by. A product sits on one of them, or none.</p>
         </li>
         <li>
           <h2>

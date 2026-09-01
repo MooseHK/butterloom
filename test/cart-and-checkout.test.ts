@@ -1,3 +1,6 @@
+// First, and it has to stay first: this picks the database before
+// src/db/client.ts opens one. See the file for why.
+import './support/tempDb.js'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { eq } from 'drizzle-orm'
@@ -10,7 +13,7 @@ import {
   orderItems,
   orders,
   products,
-  productStock,
+  productVariants,
   sessions,
 } from '../src/db/schema.js'
 import { cartRoutes } from '../src/storefront/cart.js'
@@ -36,8 +39,8 @@ function seedProduct(slug: string, title: string, pricePaisa: number, quantity =
   if (!p) throw new Error('Product not created')
 
   const [s] = db
-    .insert(productStock)
-    .values({ productId: p.id, variantLabel: '', quantity })
+    .insert(productVariants)
+    .values({ productId: p.id, label: 'Standard', stockQty: quantity })
     .returning()
     .all()
   if (!s) throw new Error('Stock not created')
@@ -51,7 +54,7 @@ test('cart add sets cookie and creates cart item', async () => {
 
   const form = new FormData()
   form.set('product_id', String(product.id))
-  form.set('stock_id', String(stock.id))
+  form.set('variant_id', String(stock.id))
   form.set('quantity', '2')
 
   const res = await app.request('/cart/add', {
@@ -80,7 +83,7 @@ test('cart add sets cookie and creates cart item', async () => {
     .all()
   assert.equal(cartRows.length, 1)
   assert.equal(cartRows[0]?.quantity, 2)
-  assert.equal(cartRows[0]?.stockId, stock.id)
+  assert.equal(cartRows[0]?.variantId, stock.id)
 })
 
 test('cart add via json request returns json with updated count', async () => {
@@ -89,7 +92,7 @@ test('cart add via json request returns json with updated count', async () => {
 
   const form = new FormData()
   form.set('product_id', String(product.id))
-  form.set('stock_id', String(stock.id))
+  form.set('variant_id', String(stock.id))
   form.set('quantity', '1')
 
   const res = await app.request('/cart/add', {
@@ -111,7 +114,7 @@ test('cart update and remove modify quantities', async () => {
   // 1. Add item to cart
   const addForm = new FormData()
   addForm.set('product_id', String(product.id))
-  addForm.set('stock_id', String(stock.id))
+  addForm.set('variant_id', String(stock.id))
   addForm.set('quantity', '1')
 
   const addRes = await app.request('/cart/add', { method: 'POST', body: addForm })
@@ -162,7 +165,7 @@ test('checkout validates required fields and blocks invalid submit', async () =>
   // Add item to cart
   const addForm = new FormData()
   addForm.set('product_id', String(product.id))
-  addForm.set('stock_id', String(stock.id))
+  addForm.set('variant_id', String(stock.id))
   addForm.set('quantity', '1')
   const addRes = await app.request('/cart/add', { method: 'POST', body: addForm })
   const cookie = addRes.headers.get('Set-Cookie')!
@@ -191,7 +194,7 @@ test('checkout verifies stock, decrements atomically, creates order and clears c
   // Add 3 to cart
   const addForm = new FormData()
   addForm.set('product_id', String(product.id))
-  addForm.set('stock_id', String(stock.id))
+  addForm.set('variant_id', String(stock.id))
   addForm.set('quantity', '3')
   const addRes = await app.request('/cart/add', { method: 'POST', body: addForm })
   const cookie = addRes.headers.get('Set-Cookie')!
@@ -244,9 +247,9 @@ test('checkout verifies stock, decrements atomically, creates order and clears c
   assert.equal(events[0]?.toState, 'placed')
 
   // 4. Check stock was decremented from 5 to 2
-  const [updatedStock] = db.select().from(productStock).where(eq(productStock.id, stock.id)).all()
+  const [updatedStock] = db.select().from(productVariants).where(eq(productVariants.id, stock.id)).all()
   assert.ok(updatedStock)
-  assert.equal(updatedStock.quantity, initialStock - 3)
+  assert.equal(updatedStock.stockQty, initialStock - 3)
 
   // 5. Check cart was cleared
   const remainingCart = db

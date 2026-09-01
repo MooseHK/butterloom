@@ -12,6 +12,32 @@ export const siteImageSlots = ['hero'] as const
 export type SiteImageSlot = (typeof siteImageSlots)[number]
 
 /**
+ * A shelf on the storefront — "Sarees", "Kurtas". A product sits in exactly one
+ * of them, or in none while it is being set up.
+ *
+ * A table rather than a text column on products because a category is a page
+ * with a URL, an order on the front-page tiles, and a name an operator renames
+ * without breaking that URL. A free-text column gives none of those and forks
+ * into "Saree" and "Sarees" the first time somebody types quickly.
+ *
+ * ponytail: one category per product. A garment that genuinely belongs on two
+ * shelves wants a join table; none does yet, and the nullable FK is one line to
+ * migrate away from when one does.
+ */
+export const categories = sqliteTable(
+  'categories',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    slug: text('slug').notNull(),
+    name: text('name').notNull(),
+    /** Order of the front-page tiles; ties fall back to name. */
+    position: integer('position').notNull().default(0),
+    createdAt: integer('created_at').notNull().default(now),
+  },
+  (t) => [uniqueIndex('categories_slug_idx').on(t.slug), index('categories_position_idx').on(t.position)],
+)
+
+/**
  * Money is integer paisa everywhere (ADR-0006). 1 BDT = 100 paisa.
  */
 export const products = sqliteTable(
@@ -22,9 +48,22 @@ export const products = sqliteTable(
     title: text('title').notNull(),
     description: text('description').notNull().default(''),
     pricePaisa: integer('price_paisa').notNull(),
+    /**
+     * Null while a product is unshelved: it is still reachable at its own URL
+     * and still listed under All items, it just appears under no category. Set
+     * null rather than cascade on delete, because deleting a shelf must not
+     * delete what was standing on it.
+     */
+    categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
     createdAt: integer('created_at').notNull().default(now),
   },
-  (t) => [uniqueIndex('products_slug_idx').on(t.slug)],
+  (t) => [
+    uniqueIndex('products_slug_idx').on(t.slug),
+    index('products_category_idx').on(t.categoryId),
+    // Both listing sorts read this: price ascending and descending are the same
+    // index walked in either direction.
+    index('products_price_idx').on(t.pricePaisa),
+  ],
 )
 
 /**
@@ -161,11 +200,92 @@ export const pendingImages = sqliteTable(
   (t) => [index('pending_images_product_idx').on(t.productId)],
 )
 
+/**
+ * One buyable configuration of a product — the medium in indigo, the large in
+ * ecru. A product carries as many as it needs, and the ones that come in a
+ * single configuration carry exactly one.
+ *
+ * Stock lives here rather than on the product because that is where it is true:
+ * Reservation (CONTEXT.md) holds a specific variant, and ADR-0006 leans on
+ * SQLite's single writer precisely for the last-one-in-stock case. Nothing on
+ * the storefront renders this column — ADR-0007 keeps availability out of
+ * cached HTML entirely — so it is an operator's number until Reservation reads
+ * it.
+ *
+ * ponytail: no per-variant price. Every variant of a product costs what the
+ * product costs; the day one does not, this takes a nullable
+ * price_paisa_override and the listing reads a min() as its "from" price.
+ */
+export const productVariants = sqliteTable(
+  'product_variants',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    productId: integer('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    /**
+     * What the customer is picking, in one string — "Indigo / M", or "Standard"
+     * for the product that comes one way. Always joined from the option values
+     * below and never typed: a typed label is a second place the same fact is
+     * written, and the first one to fall out of step with the options beside it.
+     *
+     * Stored rather than computed so that ordering and the unique index below
+     * have something to hold on to.
+     */
+    label: text('label').notNull(),
+    stockQty: integer('stock_qty').notNull().default(0),
+    position: integer('position').notNull().default(0),
+    createdAt: integer('created_at').notNull().default(now),
+  },
+  (t) => [
+    index('product_variants_product_idx').on(t.productId, t.position),
+    // Two variants of one product with the same label are one variant entered
+    // twice; the second is a data-entry slip, not a configuration.
+    uniqueIndex('product_variants_label_idx').on(t.productId, t.label),
+  ],
+)
+
+/**
+ * One axis of one variant: Colour = Indigo, Size = M. Name and value are free
+ * text so a new axis costs no migration, and each is stored twice — once as the
+ * operator typed it, once slugified. The slug is what a filter URL carries and
+ * what the index below is walked on, which is also what keeps "Indigo" and
+ * "indigo" from becoming two chips in the filter.
+ *
+ * ponytail: no registry of permitted axes. The admin offers the names already
+ * in use as a datalist, which is enough discipline for one operator; a
+ * controlled vocabulary is a table to add the day a second one disagrees.
+ */
+export const variantOptions = sqliteTable(
+  'variant_options',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    variantId: integer('variant_id')
+      .notNull()
+      .references(() => productVariants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    nameSlug: text('name_slug').notNull(),
+    value: text('value').notNull(),
+    valueSlug: text('value_slug').notNull(),
+    position: integer('position').notNull().default(0),
+  },
+  (t) => [
+    // One value per axis per variant: a variant is not both indigo and ecru.
+    uniqueIndex('variant_options_axis_idx').on(t.variantId, t.nameSlug),
+    // The listing filter starts here — every query narrows on the pair before
+    // it touches a variant or a product row.
+    index('variant_options_facet_idx').on(t.nameSlug, t.valueSlug),
+  ],
+)
+
 export type Product = typeof products.$inferSelect
 export type ProductImage = typeof productImages.$inferSelect
 export type ImageDerivative = typeof imageDerivatives.$inferSelect
 export type SiteImage = typeof siteImages.$inferSelect
 export type PendingImage = typeof pendingImages.$inferSelect
+export type Category = typeof categories.$inferSelect
+export type ProductVariant = typeof productVariants.$inferSelect
+export type VariantOption = typeof variantOptions.$inferSelect
 
 /**
  * Anonymous browser sessions for cart persistence.
@@ -183,23 +303,14 @@ export const sessions = sqliteTable(
 
 
 /**
- * Per-variant stock tracking. A product with no variants has one row with empty variant_label.
- */
-export const productStock = sqliteTable(
-  'product_stock',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    productId: integer('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
-    variantLabel: text('variant_label').notNull().default(''),
-    quantity: integer('quantity').notNull().default(0),
-  },
-  (t) => [uniqueIndex('product_stock_product_variant_idx').on(t.productId, t.variantLabel)],
-)
-
-/**
  * Items in a session's cart.
+ *
+ * A line holds a variant, not a product: "one of these" is not orderable when a
+ * product comes in three sizes, and CONTEXT.md has said a Cart line is a Variant
+ * and a quantity since before there was a cart. The product id rides along
+ * because every read of this table wants the title beside the label, and paying
+ * for that with a second join on a page that is already uncached is worse than
+ * carrying the column.
  */
 export const cartItems = sqliteTable(
   'cart_items',
@@ -211,13 +322,17 @@ export const cartItems = sqliteTable(
     productId: integer('product_id')
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
-    stockId: integer('stock_id')
+    variantId: integer('variant_id')
       .notNull()
-      .references(() => productStock.id, { onDelete: 'cascade' }),
+      .references(() => productVariants.id, { onDelete: 'cascade' }),
     quantity: integer('quantity').notNull().default(1),
     createdAt: integer('created_at').notNull().default(now),
   },
-  (t) => [uniqueIndex('cart_items_session_stock_idx').on(t.sessionId, t.stockId)],
+  (t) => [
+    // One line per variant per session: adding the same variant twice raises the
+    // quantity on the line that is there rather than making a second one.
+    uniqueIndex('cart_items_session_variant_idx').on(t.sessionId, t.variantId),
+  ],
 )
 
 export const fulfilmentStates = [
@@ -288,9 +403,7 @@ export const orderEvents = sqliteTable(
 )
 
 export type Session = typeof sessions.$inferSelect
-export type ProductStock = typeof productStock.$inferSelect
 export type CartItem = typeof cartItems.$inferSelect
 export type Order = typeof orders.$inferSelect
 export type OrderItem = typeof orderItems.$inferSelect
 export type OrderEvent = typeof orderEvents.$inferSelect
-

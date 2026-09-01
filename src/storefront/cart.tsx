@@ -1,10 +1,10 @@
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../db/client.js'
-import { cartItems, products, productStock } from '../db/schema.js'
+import { cartItems, productVariants, products } from '../db/schema.js'
 import { formatPaisa } from '../lib/money.js'
 import { Picture } from '../views/picture.js'
-import { Crumb, StorefrontLayout } from '../views/storefront.js'
+import { StorefrontLayout } from '../views/storefront.js'
 import { getCartItemsForSession } from './queries.js'
 import {
   getCartItemCount,
@@ -31,13 +31,15 @@ cartRoutes.get('/', (c) => {
   return c.html(
     <StorefrontLayout title="Your cart — butterloom" canonicalPath="/cart" cartCount={cartCount}>
       <main>
-        <Crumb href="/" label="Keep looking" />
         <div class="head">
+          <nav class="crumbs" aria-label="Breadcrumb">
+            <a href="/">Keep looking</a>
+          </nav>
           <h1>Your cart</h1>
           {items.length > 0 ? (
-            <p class="muted">
+            <span>
               {cartCount} {cartCount === 1 ? 'item' : 'items'}
-            </p>
+            </span>
           ) : null}
         </div>
 
@@ -74,8 +76,8 @@ cartRoutes.get('/', (c) => {
                       <h2 class="cart-title">
                         <a href={`/p/${item.product.slug}`}>{item.product.title}</a>
                       </h2>
-                      {item.stock.variantLabel ? (
-                        <p class="cart-variant">{item.stock.variantLabel}</p>
+                      {item.variant.label !== 'Standard' ? (
+                        <p class="cart-variant">{item.variant.label}</p>
                       ) : null}
                       <p class="cart-price">{formatPaisa(item.product.pricePaisa)} each</p>
                       <div class="cart-controls">
@@ -162,44 +164,43 @@ cartRoutes.post('/add', async (c) => {
   }
 
   const productId = Number(form.get('product_id'))
-  let stockId = Number(form.get('stock_id'))
+  const requestedVariant = Number(form.get('variant_id'))
   const quantity = Math.max(1, Math.min(10, Number(form.get('quantity') ?? 1)))
 
   if (!productId || Number.isNaN(productId)) {
     return c.redirect('/cart', 303)
   }
 
-  // If no stock_id provided, look up default/first stock row for this product
-  if (!stockId || Number.isNaN(stockId)) {
-    const [found] = db
-      .select()
-      .from(productStock)
-      .where(eq(productStock.productId, productId))
-      .limit(1)
-      .all()
-    if (found) {
-      stockId = found.id
-    } else {
-      // Auto-create default stock row if none exists
-      const [created] = db
-        .insert(productStock)
-        .values({ productId, variantLabel: '', quantity: 10 })
-        .returning()
-        .all()
-      if (created) stockId = created.id
-    }
-  }
+  // The variant is looked up rather than trusted, and looked up *within this
+  // product*: both ids arrive on the same hand-postable form, and without the
+  // second condition a line could pair one product's title with another
+  // product's variant — which is a wrong label on a real order, not a display
+  // bug. A product page with one variant posts no variant_id at all, so the
+  // fallback is the product's first, not a row invented here: a cart may not
+  // conjure stock that nobody has counted.
+  const [variant] = db
+    .select()
+    .from(productVariants)
+    .where(
+      requestedVariant && !Number.isNaN(requestedVariant)
+        ? and(eq(productVariants.id, requestedVariant), eq(productVariants.productId, productId))
+        : eq(productVariants.productId, productId),
+    )
+    .orderBy(asc(productVariants.position), asc(productVariants.id))
+    .limit(1)
+    .all()
 
-  if (!stockId) {
+  if (!variant) {
     return c.redirect('/cart', 303)
   }
+  const variantId = variant.id
 
   const session = getOrCreateSession(c)
 
   const [existing] = db
     .select()
     .from(cartItems)
-    .where(and(eq(cartItems.sessionId, session.id), eq(cartItems.stockId, stockId)))
+    .where(and(eq(cartItems.sessionId, session.id), eq(cartItems.variantId, variantId)))
     .all()
 
   if (existing) {
@@ -213,7 +214,7 @@ cartRoutes.post('/add', async (c) => {
       .values({
         sessionId: session.id,
         productId,
-        stockId,
+        variantId,
         quantity,
       })
       .run()

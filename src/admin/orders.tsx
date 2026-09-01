@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../db/client.js'
-import { orderEvents, orderItems, orders, productStock } from '../db/schema.js'
+import { orderEvents, orderItems, orders, productVariants } from '../db/schema.js'
 import type { FulfilmentState, Order, OrderEvent, OrderItem } from '../db/schema.js'
 import { formatPaisa } from '../lib/money.js'
 import {
@@ -480,21 +480,26 @@ adminOrders.post('/:id/cancel', (c) => {
     const items = tx.select().from(orderItems).where(eq(orderItems.orderId, id)).all()
     for (const it of items) {
       if (it.productId) {
-        // Find productStock row matching product and variantLabel
-        const [stock] = tx
+        // The order line records the label rather than the variant id, so that
+        // an order still reads correctly after the variant is renamed or
+        // deleted. Restocking has to find its way back from that label, and
+        // simply does nothing when the variant is gone — there is no longer a
+        // shelf to put the goods back on, and inventing one would put stock
+        // against a configuration the shop no longer sells.
+        const [variant] = tx
           .select()
-          .from(productStock)
+          .from(productVariants)
           .where(
             and(
-              eq(productStock.productId, it.productId),
-              eq(productStock.variantLabel, it.variantLabel),
+              eq(productVariants.productId, it.productId),
+              eq(productVariants.label, it.variantLabel),
             ),
           )
           .all()
-        if (stock) {
-          tx.update(productStock)
-            .set({ quantity: stock.quantity + it.quantity })
-            .where(eq(productStock.id, stock.id))
+        if (variant) {
+          tx.update(productVariants)
+            .set({ stockQty: variant.stockQty + it.quantity })
+            .where(eq(productVariants.id, variant.id))
             .run()
         }
       }
@@ -539,20 +544,22 @@ adminOrders.post('/:id/return', (c) => {
     const items = tx.select().from(orderItems).where(eq(orderItems.orderId, id)).all()
     for (const it of items) {
       if (it.productId) {
-        const [stock] = tx
+        // Same find-by-label as the return path above, and the same silence
+        // when the variant has since gone.
+        const [variant] = tx
           .select()
-          .from(productStock)
+          .from(productVariants)
           .where(
             and(
-              eq(productStock.productId, it.productId),
-              eq(productStock.variantLabel, it.variantLabel),
+              eq(productVariants.productId, it.productId),
+              eq(productVariants.label, it.variantLabel),
             ),
           )
           .all()
-        if (stock) {
-          tx.update(productStock)
-            .set({ quantity: stock.quantity + it.quantity })
-            .where(eq(productStock.id, stock.id))
+        if (variant) {
+          tx.update(productVariants)
+            .set({ stockQty: variant.stockQty + it.quantity })
+            .where(eq(productVariants.id, variant.id))
             .run()
         }
       }
