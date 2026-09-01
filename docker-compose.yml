@@ -1,0 +1,23 @@
+services:
+  butterloom:
+    image: ghcr.io/moosehk/butterloom:latest
+    # To build locally instead of pulling, uncomment the next two lines
+    # and comment out the 'image' line above:
+    # build: .
+    # image: butterloom:local
+    container_name: butterloom
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    volumes:
+      - butterloom-data:/app/var
+    env_file:
+      - .env
+    environment:
+      - PORT=3000
+      - BUTTERLOOM_DB=/app/var/butterloom.db
+      - BUTTERLOOM_MEDIA_DIR=/app/var/media
+      - BUTTERLOOM_MEDIA_BASE_URL=/media
+
+volumes:
+  butterloom-data:
