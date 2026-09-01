@@ -53,9 +53,7 @@ export function StorefrontLayout(
             what ADR-0003 and ADR-0004 actually commit us to.
           */}
           <div class="promo">
-            Cash on delivery
-            <i class="dot" />
-            Dispatched daily
+            Woven in comfort
           </div>
           <header class="site">
             <a class="wm" href="/">
