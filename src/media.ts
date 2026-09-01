@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { Hono } from 'hono'
 import { fileStore } from './images/storage.js'
 import { mimeTypes } from './images/ladder.js'
@@ -31,4 +34,33 @@ mediaRoutes.get('/:a/:b/:name', async (c) => {
   } catch {
     return c.notFound()
   }
+})
+
+/**
+ * The brand mark is committed rather than uploaded, but it is served the way
+ * every other immutable byte here is: read once at startup, named by its own
+ * content hash, far-future cache header, no purge path. One hash resolves and
+ * nothing is interpolated into a filesystem path, so there is nothing to
+ * traverse.
+ */
+const markBytes = readFileSync(path.join(import.meta.dirname, '..', 'assets', 'butterloom-mark.png'))
+const markName = `${createHash('sha256').update(markBytes).digest('hex')}.png`
+const markBody = markBytes.buffer.slice(
+  markBytes.byteOffset,
+  markBytes.byteOffset + markBytes.byteLength,
+) as ArrayBuffer
+
+/** Content-addressed URL of the 460 × 460 logo lockup. */
+export const brandMarkUrl = `/brand/${markName}`
+
+export const brandRoutes = new Hono()
+
+brandRoutes.get('/:name', (c) => {
+  // A bare 404, not the storefront's: a broken <img> has no use for 6KB of HTML,
+  // and a wrong hash here is a bug rather than a page a CDN should hold on to.
+  if (c.req.param('name') !== markName) return c.body(null, 404, { 'Cache-Control': 'no-store' })
+  return c.body(markBody, 200, {
+    'Content-Type': 'image/png',
+    'Cache-Control': 'public, max-age=31536000, immutable',
+  })
 })

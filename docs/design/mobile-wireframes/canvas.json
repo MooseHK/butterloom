@@ -1,12 +1,13 @@
 {
   "artboards": [
-    { "file": "Main.dc.html", "title": "Catalogue", "x": 0, "y": 0, "w": 390, "h": 844 },
-    { "file": "Product.dc.html", "title": "Product", "x": 470, "y": 0, "w": 390, "h": 1460 },
-    { "file": "Cart.dc.html", "title": "Cart", "x": 940, "y": 0, "w": 390, "h": 844 },
-    { "file": "Checkout.dc.html", "title": "Checkout — one page", "x": 1410, "y": 0, "w": 390, "h": 1460, "is_interactive": true },
-    { "file": "Confirmation.dc.html", "title": "Order placed", "x": 1880, "y": 0, "w": 390, "h": 844 },
-    { "file": "CheckoutNoJs.dc.html", "title": "Checkout — JavaScript off", "x": 1410, "y": 1700, "w": 390, "h": 1460 },
-    { "file": "CheckoutStepped.dc.html", "title": "Checkout — Option B, stepped", "x": 1880, "y": 1700, "w": 390, "h": 844 }
+    { "file": "Main.dc.html", "title": "Front page", "x": 0, "y": 0, "w": 390, "h": 2400 },
+    { "file": "Listing.dc.html", "title": "Listing — Saris", "x": 470, "y": 0, "w": 390, "h": 1580 },
+    { "file": "Product.dc.html", "title": "Product", "x": 940, "y": 0, "w": 390, "h": 1760 },
+    { "file": "Cart.dc.html", "title": "Cart", "x": 1410, "y": 0, "w": 390, "h": 1020 },
+    { "file": "Checkout.dc.html", "title": "Checkout — one page", "x": 1880, "y": 0, "w": 390, "h": 1780, "is_interactive": true },
+    { "file": "Confirmation.dc.html", "title": "Order placed", "x": 2350, "y": 0, "w": 390, "h": 1000 },
+    { "file": "CheckoutNoJs.dc.html", "title": "Checkout — JavaScript off", "x": 1880, "y": 2620, "w": 390, "h": 1800 },
+    { "file": "CheckoutStepped.dc.html", "title": "Checkout — Option B, stepped", "x": 2350, "y": 2620, "w": 390, "h": 900 }
   ],
   "annotations": [
     {
@@ -14,47 +15,61 @@
       "x": -360,
       "y": 0,
       "w": 310,
-      "text": "Butterloom — mobile-first, low fidelity.\n\n390 × 844 phone frames. The dashed rule marks the fold on the screens that run past it.\n\nGrey bars are copy nobody has written yet. [BRACKETS] are facts or decisions nobody has settled. Product names, prices and the TrxID are sample values."
+      "text": "Butterloom — mobile-first storefront, 390 × 844 phone frames.\n\nStyled from the logo: paper, ink, dot-grey, arched tracked caps, no third colour. Front page carries the anatomy of a large apparel storefront (promo strip, full-bleed hero, category tiles, scroll rail, editorial band); the listing follows the quieter luxury-house pattern (breadcrumb, sticky filter and sort, large imagery, sparse tracked labels). Anatomy only — no other house's marks, faces or copy.\n\nBracketed items are facts nobody has settled. Product names, prices and the TrxID are sample values."
+    },
+    {
+      "id": "tokens",
+      "x": -360,
+      "y": 640,
+      "w": 310,
+      "text": "Lifted off the logo file, not guessed:\n\npaper #f2eee6 · lift #f8f5ef · grid line #eee9e1 (28px)\nink #33383a · secondary #62635c · quiet #6c6b64\nhairline #e2ddd1 · field edge #dcd6c9 · dot #a3a194\n\nThe quiet ink is NOT the logo's #83827b: that measures 3.33:1 on paper and fails the 4.5:1 floor for small text. #6c6b64 is the same colour walked down to 4.62:1. #a3a194 is for dots and rules only — never text.\n\nDisplay and body: ui-serif, Georgia — 400 weight, never bold.\nLabels, buttons, chrome: system-ui caps, 9.5–11px, .14–.26em tracking.\nRadius 2px. Controls 52–54px. No shadows, no gradients except the two image scrims. No webfont, so nothing here reopens that decision."
     },
     {
       "id": "note-main",
       "x": 0,
-      "y": -230,
+      "y": -260,
       "w": 390,
-      "text": "Catalogue — cached at the edge, so it arrives in one round trip from Dhaka.\n\nThe 2 beside Cart is the only per-visitor pixel on the page: read from the client-readable cookie by part of the 1–2KB JS budget. With JS off the badge is just the word Cart."
+      "text": "Front page. Everything here is static markup over pre-generated image derivatives, so the whole page stays edge-cacheable: one round trip from Dhaka.\n\nThe rail scrolls on CSS scroll-snap — a big storefront's carousel without a carousel script. The promo strip is a constant, not a per-visitor message, which is what keeps it out of the cache rules.\n\nThe cart count is still the only per-visitor pixel on the page, and the logo seal signs off the footer at its full lockup."
+    },
+    {
+      "id": "note-listing",
+      "x": 470,
+      "y": -260,
+      "w": 390,
+      "text": "Listing. Filter and Sort are real GET forms — the URL carries them, so every filtered view is its own cacheable page. Chips are the applied parameters, removable.\n\nLoad the next six is a link to page two, not infinite scroll: nothing to hydrate, and the crawler follows it.\n\nNo wishlist heart. It would need either an account (there is none) or state outside the 1–2KB JS budget, so the pattern is left out rather than faked.\n\nStill no stock line anywhere — that is what lets this page be cached at all."
     },
     {
       "id": "note-product",
-      "x": 470,
-      "y": -230,
+      "x": 940,
+      "y": -260,
       "w": 390,
-      "text": "Nothing here says whether the piece is in stock, and nothing should: a cached page that asserts nothing about stock cannot go stale into a lie (ADR-0007).\n\nAdd to cart is the first POST allowed to set a cookie, so it is an uncached path.\n\nOne shot above the buy block and the rest below it. The current markup stacks every photograph above the price, which on a phone pushes ৳6,400 a screen and a half down — worth a decision."
+      "text": "Product. The three accordions are native <details> — zero script, and they collapse the page to one screen of decision instead of three of prose.\n\nThe gallery is a CSS scroll-snap row, which fixes the thing the wireframe pass flagged: the old markup stacked every photograph above the price.\n\nNothing says whether the piece is in stock, and nothing should (ADR-0007). Add to cart is the first POST allowed to set a cookie, so it is an uncached path."
     },
     {
       "id": "note-cart",
-      "x": 940,
-      "y": -230,
+      "x": 1410,
+      "y": -260,
       "w": 390,
-      "text": "Uncached and cookie-keyed, so this page may carry per-visitor truth without the caching rules biting.\n\nThe − and + are real submit buttons that POST and redirect; quantity needs no JS.\n\nDelivery is priced by our own flat rule — Pathao is never asked for a live quote (ADR-0004)."
+      "text": "Cart. Uncached and cookie-keyed, so this page may carry per-visitor truth without the caching rules biting.\n\nThe − and + are real submit buttons that POST and redirect; quantity needs no JS.\n\nDelivery is priced by our own flat rule — Pathao is never asked for a live quote (ADR-0004)."
     },
     {
       "id": "note-checkout",
-      "x": 1410,
-      "y": -230,
+      "x": 1880,
+      "y": -260,
       "w": 390,
-      "text": "One page, one POST. The selects work: city → zone → area, the cascade ADR-0004 makes mandatory, each step standing in for a fetch of one edge-cacheable option fragment rather than shipping the whole location tree.\n\nThe bKash reveal below it is CSS :has(), not script, so it costs nothing from the budget.\n\nJS on this screen: the cascade and the cart badge. Nothing else."
+      "text": "Checkout. One page, one POST, three numbered movements. Nav is stripped from the header on purpose.\n\nThe selects work: city → zone → area, the cascade ADR-0004 makes mandatory, each step standing in for a fetch of one edge-cacheable option fragment rather than shipping the whole location tree.\n\nThe bKash reveal is CSS :has(), not script. Total JS on this screen is the cascade and the cart badge — nothing else."
     },
     {
       "id": "note-nojs",
-      "x": 1410,
-      "y": 1490,
+      "x": 1880,
+      "y": 2420,
       "w": 390,
-      "text": "The same screen with JavaScript off — the hard requirement, drawn rather than assumed.\n\nEach Load button is a real submit; the page comes back with the next list filled in and the earlier answers kept. Two extra round trips from Dhaka, where the enhanced path costs none.\n\nThe cart badge is gone, because the count comes from the JS that is not running."
+      "text": "The same screen with JavaScript off — the hard requirement, drawn rather than assumed.\n\nEach Load button is a real submit; the page comes back with the next list filled in and the earlier answers kept. Two extra round trips from Dhaka, where the enhanced path costs none.\n\nOn the shop pages this visitor also loses the cart count, because that badge is the other half of the JS budget."
     },
     {
       "id": "note-stepped",
-      "x": 1880,
-      "y": 1490,
+      "x": 2350,
+      "y": 2420,
       "w": 390,
       "text": "Option B, kept so the choice is on the table — not the recommendation.\n\nFor: three short screens read better on a phone, a mistake is cheaper to recover, and the JS-off path stops being a second path.\n\nAgainst: two or three extra round trips from Dhaka on every checkout, which is the cost ADR-0007 spends the whole architecture avoiding, and a form that can be abandoned in three places instead of one."
     }

@@ -6,7 +6,7 @@ import { adminProducts } from './admin/products.js'
 import { config } from './config.js'
 import { runMigrations } from './db/migrate.js'
 import { resolveEncoderSupport } from './images/pipeline.js'
-import { mediaRoutes } from './media.js'
+import { brandRoutes, mediaRoutes } from './media.js'
 import { notFound, storefront } from './storefront/catalogue.js'
 import { edgeCacheable } from './storefront/cache.js'
 
@@ -37,9 +37,11 @@ if (adminUser && adminPassword) {
 
 app.route('/admin/products', adminProducts)
 app.route('/media', mediaRoutes)
+app.route('/brand', brandRoutes)
 
 // Catalogue HTML is the cacheable half of the origin (ADR-0007). Registered
-// last so the admin and media prefixes are matched first.
+// last so the admin, media and brand prefixes are matched first — those already
+// carry an immutable cache header, and edgeCacheable would overwrite it.
 app.use('*', edgeCacheable)
 app.route('/', storefront)
 
