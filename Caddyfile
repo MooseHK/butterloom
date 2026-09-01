@@ -1,0 +1,3 @@
+butterloombd.com {
+	reverse_proxy butterloom:3000
+}
