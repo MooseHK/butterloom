@@ -58,14 +58,21 @@ export const imageDerivatives = sqliteTable(
     width: integer('width').notNull(),
     height: integer('height').notNull(),
     byteSize: integer('byte_size').notNull(),
-    /** sha256 of the derivative bytes; also its storage key and its URL. */
+    /**
+     * sha256 of the derivative bytes; also its storage key and its URL. Two
+     * images can legitimately share one — the same photograph uploaded against
+     * two products encodes to the same bytes — so the blob is shared and the
+     * key is not unique across rows.
+     */
     sha256: text('sha256').notNull(),
     storageKey: text('storage_key').notNull(),
     createdAt: integer('created_at').notNull().default(now),
   },
   (t) => [
-    index('image_derivatives_image_idx').on(t.imageId, t.format, t.width),
-    uniqueIndex('image_derivatives_key_idx').on(t.storageKey),
+    // One rung per image, format and width; the ladder is regenerated as a
+    // whole, never appended to.
+    uniqueIndex('image_derivatives_rung_idx').on(t.imageId, t.format, t.width),
+    index('image_derivatives_key_idx').on(t.storageKey),
   ],
 )
 

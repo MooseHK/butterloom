@@ -6,8 +6,8 @@ Implementation has started. The `index.html` at the root is a superseded static
 prototype — a client-side cart and mock admin over four demo products — kept only
 for reference. Nothing in it is being carried forward.
 
-What runs today is the first slice: a product record and the image upload
-pipeline behind it. See [Running the application](#running-the-application).
+What runs today: the product record, the image upload pipeline behind it, and
+the customer-facing catalogue and product pages. See [Running the application](#running-the-application).
 
 ## Where the thinking lives
 
@@ -66,6 +66,16 @@ npm start                                # http://localhost:3000/admin/products
   too, so re-cutting the ladder does not mean asking the operator to re-upload.
 - **`<picture>` rendering** — AVIF then WebP then a JPEG fallback, with `srcset`,
   `sizes` and intrinsic `width`/`height` so nothing shifts as images arrive.
+- **Catalogue and product pages** — `/` and `/p/:slug`, server-rendered, no client
+  JavaScript, marked `public` with a short browser TTL and a longer shared one so
+  the Dhaka PoP answers. Neither page renders availability, and neither ever
+  should: ADR-0007 keeps the promise that a stale page cannot assert something
+  false about stock by having it assert nothing at all. A middleware refuses to
+  mark any response cacheable if it carries `Set-Cookie` and logs it, because a
+  CDN would otherwise decline to cache it with no error and no symptom.
+
+There is no add-to-cart button yet. It is the first thing the cart slice adds,
+and it is the one response on the storefront allowed to issue a cookie.
 
 Two things to know about the current environment. AVIF is in the ladder but this
 machine's libvips has no AV1 encoder, so uploads produce WebP and JPEG only; the

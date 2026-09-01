@@ -7,6 +7,8 @@ import { config } from './config.js'
 import { runMigrations } from './db/migrate.js'
 import { resolveEncoderSupport } from './images/pipeline.js'
 import { mediaRoutes } from './media.js'
+import { notFound, storefront } from './storefront/catalogue.js'
+import { edgeCacheable } from './storefront/cache.js'
 
 runMigrations()
 
@@ -36,7 +38,12 @@ if (adminUser && adminPassword) {
 app.route('/admin/products', adminProducts)
 app.route('/media', mediaRoutes)
 
-app.get('/', (c) => c.redirect('/admin/products', 302))
+// Catalogue HTML is the cacheable half of the origin (ADR-0007). Registered
+// last so the admin and media prefixes are matched first.
+app.use('*', edgeCacheable)
+app.route('/', storefront)
+
+app.notFound(notFound)
 
 const support = await resolveEncoderSupport()
 console.log(`[images] encoder formats available: ${[...support].join(', ') || 'none'}`)

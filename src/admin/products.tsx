@@ -5,6 +5,7 @@ import { db } from '../db/client.js'
 import { imageDerivatives, productImages, products } from '../db/schema.js'
 import type { ImageDerivative } from '../db/schema.js'
 import { EncoderError, UploadError, ingestProductImage } from '../images/pipeline.js'
+import { formatPaisa } from '../lib/money.js'
 import { AdminLayout } from '../views/layout.js'
 import { Picture } from '../views/picture.js'
 
@@ -59,7 +60,7 @@ adminProducts.get('/', (c) => {
                 <a href={`/admin/products/${p.id}`}>{p.title}</a>
               </td>
               <td class="muted">{p.slug}</td>
-              <td>৳{(p.pricePaisa / 100).toFixed(2)}</td>
+              <td>{formatPaisa(p.pricePaisa)}</td>
               <td>{imageCounts.get(p.id) ?? 0}</td>
             </tr>
           ))}
@@ -123,6 +124,9 @@ adminProducts.get('/:id', (c) => {
 
   return c.html(
     <AdminLayout title={product.title}>
+      <p class="muted">
+        {formatPaisa(product.pricePaisa)} · <a href={`/p/${product.slug}`}>view on the storefront</a>
+      </p>
       {error ? <p class="notice error">{error}</p> : null}
       {uploaded ? <p class="notice">Generated {uploaded} derivatives.</p> : null}
 
