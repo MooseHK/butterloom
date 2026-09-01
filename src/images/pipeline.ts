@@ -25,7 +25,7 @@ export async function resolveEncoderSupport(): Promise<Set<DerivativeFormat>> {
   return available
 }
 
-const acceptedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/tiff'])
+export const acceptedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/tiff'])
 
 export interface UploadResult {
   imageId: number
