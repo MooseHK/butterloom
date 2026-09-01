@@ -1,10 +1,6 @@
 services:
   butterloom:
-    image: ghcr.io/moosehk/butterloom:latest
-    # To build locally instead of pulling, uncomment the next two lines
-    # and comment out the 'image' line above:
-    # build: .
-    # image: butterloom:local
+    build: .
     container_name: butterloom
     restart: unless-stopped
     ports:

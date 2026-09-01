@@ -8,7 +8,7 @@ RUN apt-get update && \
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 # ── Stage 2: production image ────────────────────────────────────────
 FROM node:22-slim AS runtime
