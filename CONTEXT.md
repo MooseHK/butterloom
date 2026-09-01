@@ -63,8 +63,10 @@ settlement follows the refund policy. The return freight is a cost we bear.
 _Avoid_: return, failed delivery, cancellation (a cancellation happens before dispatch)
 
 **Cart**:
-The set of items a visitor intends to buy, before an Order exists. It holds no
-stock; availability is resolved at placement, not when an item is added.
+The set of items a visitor intends to buy, before an Order exists. An item is a
+Variant and a quantity, not a Product — a cart holds the medium in indigo. It
+holds no stock; availability is resolved at placement, not when an item is
+added.
 _Avoid_: basket, bag
 
 ### Fulfilment
@@ -82,8 +84,9 @@ succeeds or fails as.
 _Avoid_: shipment batch, daily orders
 
 **Reservation**:
-Stock held against an unverified Manual bKash order so it cannot be sold twice,
-expiring automatically if payment is not verified within the configured window.
+Stock held on a specific Variant against an unverified Manual bKash order so it
+cannot be sold twice, expiring automatically if payment is not verified within
+the configured window.
 _Avoid_: hold, allocation, lock
 
 ### Payment (continued)
@@ -94,3 +97,38 @@ number. Distinct from and much lighter than the Merchant Approval required for a
 payment gateway, but still granted by bKash rather than assumed. Manual bKash
 depends on one.
 _Avoid_: merchant number, business account, till
+
+### Catalogue
+
+**Product**:
+The garment as it is described, photographed and priced — one title, one
+description, one price, one page. It is what a customer browses; what they
+actually buy is always a Variant of it.
+_Avoid_: SKU, style, line
+
+**Category**:
+A shelf on the storefront — Sarees, Kurtas. It has its own page, its own place
+in the order of the front-page tiles, and a name an operator can change without
+changing the address of that page. A Product sits on one shelf, or on none while
+it is being set up; deleting a shelf unshelves what stood on it rather than
+deleting it.
+_Avoid_: collection (the front page calls the whole catalogue that), tag, department
+
+**Variant**:
+One buyable configuration of a Product — the medium in indigo, the large in ecru.
+It is where stock is counted, what a Cart line holds and what a Reservation is
+taken against. A Product carries as many Variants as it has configurations, and
+one that comes in a single configuration carries exactly one.
+_Avoid_: SKU (we hold no stock-keeping unit), option, size, product
+
+**Variant Option**:
+One axis of one Variant and the value it takes on that axis — Colour: Indigo,
+Size: M. Names and values are whatever the operator types; there is no fixed list
+of permitted axes, so a new one costs nothing to start using.
+_Avoid_: attribute, property, spec, variation
+
+**Facet**:
+An axis a customer can filter a listing by, together with the values that exist
+somewhere in the part of the catalogue being listed. Scope, not selection: the
+values do not narrow as filters are applied, and none of them carries a count.
+_Avoid_: filter (a filter is what a customer picks from a facet), refinement

@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { basicAuth } from 'hono/basic-auth'
 import { bodyLimit } from 'hono/body-limit'
 import { logger } from 'hono/logger'
+import { adminCategories } from './admin/categories.js'
 import { adminHome } from './admin/home.js'
 import { adminOrders } from './admin/orders.js'
 import { adminProducts } from './admin/products.js'
@@ -71,6 +72,7 @@ app.use(
 
 app.route('/admin/orders', adminOrders)
 app.route('/admin/products', adminProducts)
+app.route('/admin/categories', adminCategories)
 app.route('/admin/site-images', adminSiteImages)
 app.route('/admin', adminHome)
 app.route('/media', mediaRoutes)

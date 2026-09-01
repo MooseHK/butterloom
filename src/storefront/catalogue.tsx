@@ -1,10 +1,30 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
+import type { Category } from '../db/schema.js'
 import { formatPaisa } from '../lib/money.js'
 import { Seal, StorefrontLayout } from '../views/storefront.js'
 import { Picture } from '../views/picture.js'
-import { findProductBySlug, findSiteImage, listCatalogue } from './queries.js'
-import type { ImageWithDerivatives } from './queries.js'
+import {
+  allowedFrom,
+  facetsFor,
+  findCategoryBySlug,
+  findProductBySlug,
+  findSiteImage,
+  listCategories,
+  listProducts,
+} from './queries.js'
+import type { Facet, ImageWithDerivatives, ProductListing } from './queries.js'
+import {
+  hasValue,
+  isFiltered,
+  listingHref,
+  listingSearch,
+  parseListingParams,
+  sortLabels,
+  sorts,
+  toggleValue,
+  withPage,
+} from './listing.js'
 
 export const storefront = new Hono()
 
@@ -26,6 +46,9 @@ const cardSizes =
   '(min-width: 640px) 190px, (min-width: 518px) 30vw, (min-width: 354px) 45vw, calc(100vw - 40px)'
 const shotSizes = '(min-width: 640px) 510px, calc(85vw - 34px)'
 
+/** The front-page rail is a fixed-width scroll-snap row, so this is one number. */
+const railSizes = '168px'
+
 /**
  * The hero bleeds to the edge of main, which is the viewport on a phone and
  * capped at main's own 40rem above that — not the full window. Claiming 100vw
@@ -34,8 +57,13 @@ const shotSizes = '(min-width: 640px) 510px, calc(85vw - 34px)'
 const heroSizes = '(min-width: 640px) 640px, 100vw'
 
 storefront.get('/', (c) => {
-  const listings = listCatalogue()
   const hero = findSiteImage('hero')
+  // A tile onto an empty shelf is a dead end, so the front page draws only the
+  // shelves with something standing on them — the admin still needs to see the
+  // rest, which is why listCategories returns them all.
+  const shelves = listCategories().filter((shelf) => shelf.productCount > 0)
+  const newest = listProducts({ limit: 6 }).listings
+
   return c.html(
     <StorefrontLayout title="butterloom" canonicalPath="/">
       <main>
@@ -65,46 +93,236 @@ storefront.get('/', (c) => {
         <div class="head">
           <h1>The collection</h1>
         </div>
-        {listings.length === 0 ? (
+        {shelves.length > 0 ? (
+          <section class="sec">
+            <h2>Shop by piece</h2>
+            <ul class="tiles">
+              {shelves.map(({ category, productCount }) => (
+                <li>
+                  <a href={`/c/${category.slug}`}>
+                    <b>{category.name}</b>
+                    <span>{pieces(productCount)}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {newest.length === 0 ? (
           <div class="detail">
             <p class="muted">Nothing here yet. New pieces are on their way.</p>
           </div>
         ) : (
-          <ul class="grid">
-            {listings.map(({ product, cover }, index) => (
-              <li class="card">
-                <a href={`/p/${product.slug}`}>
-                  {cover ? (
-                    <Picture
-                      image={cover.image}
-                      derivatives={cover.derivatives}
-                      sizes={cardSizes}
-                      // The first row is above the fold on a phone; lazy-loading
-                      // it would delay the largest paint on the slow networks
-                      // this whole architecture is built around.
-                      loading={index < 2 ? 'eager' : 'lazy'}
-                    />
-                  ) : (
-                    <div class="placeholder">No photograph yet</div>
-                  )}
-                  <h2>{product.title}</h2>
-                  <p>{formatPaisa(product.pricePaisa)}</p>
-                </a>
-              </li>
-            ))}
-          </ul>
+          <section class="sec">
+            <h2>New arrivals</h2>
+            <ul class="rail">
+              {newest.map((entry, index) => (
+                <Card listing={entry} sizes={railSizes} eager={index < 2} />
+              ))}
+            </ul>
+            <a class="btn" href="/shop">
+              Shop all pieces
+            </a>
+          </section>
         )}
       </main>
     </StorefrontLayout>,
   )
 })
 
+storefront.get('/shop', (c) => listing(c, '/shop', null))
+
+storefront.get('/c/:slug', (c) => {
+  const category = findCategoryBySlug(c.req.param('slug'))
+  if (!category) return c.notFound()
+  return listing(c, `/c/${category.slug}`, category)
+})
+
+/**
+ * All items and one shelf are the same document with a different scope, so they
+ * are one function.
+ *
+ * Every control on it is a link or a GET form, which is not restraint for its
+ * own sake: ADR-0007 makes this page an edge-cached document, and a filtered
+ * view held in script state would have no URL to cache, share or crawl.
+ */
+function listing(c: Context, basePath: string, category: Category | null) {
+  const scopeId = category?.id ?? null
+  const facets = facetsFor(scopeId)
+  const requested = parseListingParams(c.req.queries(), allowedFrom(facets))
+  const results = listProducts({ categoryId: scopeId, params: requested })
+  // parseListingParams cannot clamp the page — it has counted nothing — so page
+  // nine of a three-page shelf becomes page three here. Folding the clamp into
+  // the canonical URL rather than only into the query is what makes those two
+  // one cache entry instead of two URLs serving byte-identical HTML.
+  const params = withPage(requested, results.page)
+  const search = listingSearch(params)
+
+  // Every distinct query string is a distinct entry in the CDN's cache, so this
+  // listing gets exactly one URL and everything else is sent to it: ?sort=newest,
+  // ?page=1, re-ordered filters, junk parameters. The target parses back to
+  // these same params, which is what keeps this off a redirect loop.
+  if (new URL(c.req.url).search !== search) return c.redirect(basePath + search, 301)
+
+  const heading = category ? category.name : 'All items'
+  const filtered = isFiltered(params)
+  const applied = params.filters.reduce((n, f) => n + f.valueSlugs.length, 0)
+
+  return c.html(
+    <StorefrontLayout title={`${heading} — butterloom`} canonicalPath={basePath + search}>
+      <main>
+        <div class="head">
+          {category ? (
+            <nav class="crumbs" aria-label="Breadcrumb">
+              <a href="/shop">All items</a>
+              <i class="dot" />
+              <b aria-current="page">{category.name}</b>
+            </nav>
+          ) : null}
+          <h1>{heading}</h1>
+          <span>{pieces(results.total)}</span>
+        </div>
+
+        {results.total > 0 || filtered ? (
+          <details class="controls">
+            <summary>{applied > 0 ? `Filter and sort (${applied})` : 'Filter and sort'}</summary>
+            {/*
+              No page input: applying always lands on page one, because page four
+              of an unfiltered listing is rarely page four of a filtered one.
+            */}
+            <form method="get" action={basePath}>
+              <div>
+                <label class="label" for="sort">
+                  Sort
+                </label>
+                <select id="sort" name="sort">
+                  {sorts.map((sort) => (
+                    <option value={sort} selected={sort === params.sort}>
+                      {sortLabels[sort]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {/*
+                The axes offered are the ones present in this scope, and they do
+                not narrow to what is in stock: ADR-0007 keeps availability out
+                of cached HTML, and a filter that hid sold-out variants would be
+                exactly the stale assertion that promise exists to prevent.
+              */}
+              {facets.map((facet) => (
+                <fieldset>
+                  <legend>{facet.name}</legend>
+                  <div class="values">
+                    {facet.values.map((value) => (
+                      <label for={`${facet.nameSlug}-${value.valueSlug}`}>
+                        <input
+                          type="checkbox"
+                          id={`${facet.nameSlug}-${value.valueSlug}`}
+                          name={facet.nameSlug}
+                          value={value.valueSlug}
+                          checked={hasValue(params, facet.nameSlug, value.valueSlug)}
+                        />
+                        {value.value}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              ))}
+              <button class="btn" type="submit">
+                Apply
+              </button>
+            </form>
+          </details>
+        ) : null}
+
+        {filtered ? (
+          <ul class="chips">
+            {params.filters.flatMap((filter) =>
+              filter.valueSlugs.map((valueSlug) => {
+                const label = describe(facets, filter.nameSlug, valueSlug)
+                return (
+                  <li>
+                    {/* The axis name travels with the value: "Indigo" on its own
+                        stops reading as a colour once three axes are applied. */}
+                    <a
+                      class="chip"
+                      href={listingHref(basePath, toggleValue(params, filter.nameSlug, valueSlug))}
+                      aria-label={`Remove ${label}`}
+                    >
+                      {label}
+                      <span aria-hidden="true">×</span>
+                    </a>
+                  </li>
+                )
+              }),
+            )}
+            <li>
+              <a class="clear" href={basePath}>
+                Clear all
+              </a>
+            </li>
+          </ul>
+        ) : null}
+
+        {results.listings.length === 0 ? (
+          <div class="detail">
+            <p class="muted">
+              {filtered ? (
+                <>
+                  Nothing matches those filters. <a href={basePath}>Clear all</a>.
+                </>
+              ) : (
+                'Nothing here yet. New pieces are on their way.'
+              )}
+            </p>
+          </div>
+        ) : (
+          <ul class="grid">
+            {results.listings.map((entry, index) => (
+              <Card listing={entry} sizes={cardSizes} eager={index < 2} />
+            ))}
+          </ul>
+        )}
+
+        {results.pageCount > 1 ? (
+          <nav class="pages" aria-label="Pagination">
+            {params.page > 1 ? (
+              <a
+                class="prev"
+                rel="prev"
+                href={listingHref(basePath, withPage(params, params.page - 1))}
+              >
+                Previous
+              </a>
+            ) : null}
+            <span aria-current="page">
+              Page {params.page} of {results.pageCount}
+            </span>
+            {params.page < results.pageCount ? (
+              <a
+                class="next"
+                rel="next"
+                href={listingHref(basePath, withPage(params, params.page + 1))}
+              >
+                Next
+              </a>
+            ) : null}
+          </nav>
+        ) : null}
+      </main>
+    </StorefrontLayout>,
+  )
+}
+
 storefront.get('/p/:slug', (c) => {
   const detail = findProductBySlug(c.req.param('slug'))
   if (!detail) return c.notFound()
-  const { product, images, stocks } = detail
+  const { product, images, variants } = detail
 
-  const hasVariants = stocks.length > 1 || (stocks.length === 1 && Boolean(stocks[0]?.variantLabel))
+  // Main's rule, on the variant table rather than the stock table it was
+  // written against: a lone unnamed configuration is not a choice to offer.
+  const hasVariants =
+    variants.length > 1 || (variants.length === 1 && variants[0]?.variant.label !== 'Standard')
 
   return c.html(
     <StorefrontLayout
@@ -126,25 +344,30 @@ storefront.get('/p/:slug', (c) => {
               <div class="variant-group">
                 <span class="variant-label">Select Variant</span>
                 <div class="variant-options">
-                  {stocks.map((s, idx) => (
+                  {variants.map(({ variant }, idx) => (
                     <label>
                       <input
                         type="radio"
-                        name="stock_id"
-                        value={s.id}
+                        name="variant_id"
+                        value={variant.id}
                         class="variant-radio"
                         checked={idx === 0}
                         required
                       />
-                      <span class="variant-chip">
-                        {s.variantLabel || 'Standard'}
-                      </span>
+                      {/*
+                        The label is already the option values joined — "Indigo
+                        / M" — so the chip says what the axes would have said,
+                        and says it as the thing you can actually pick.
+                      */}
+                      <span class="variant-chip">{variant.label}</span>
                     </label>
                   ))}
                 </div>
               </div>
             ) : (
-              stocks[0] ? <input type="hidden" name="stock_id" value={stocks[0].id} /> : null
+              variants[0] ? (
+                <input type="hidden" name="variant_id" value={variants[0].variant.id} />
+              ) : null
             )}
 
             <button type="submit" class="btn" id="add-to-cart-btn" style="margin-top: 8px;">
@@ -153,10 +376,11 @@ storefront.get('/p/:slug', (c) => {
           </form>
 
           {/*
-            No availability is rendered here, and none ever should be: this
-            page is cached at the edge, and ADR-0007 keeps the promise that a
-            stale page cannot assert something false about stock by having it
-            assert nothing. Stock is resolved at placement, against Reservation.
+            No availability is rendered here, and none ever should be: this page
+            is cached at the edge, and ADR-0007 keeps the promise that a stale
+            page cannot assert something false about stock by having it assert
+            nothing. The picker above names the configurations, never how many
+            of one are left; stock is resolved at placement, against Reservation.
           */}
           {/* The strip above and the footer below already say where we deliver;
               what belongs at the point of decision is how you can pay. */}
@@ -204,6 +428,30 @@ storefront.get('/p/:slug', (c) => {
   )
 })
 
+function Card(props: { listing: ProductListing; sizes: string; eager: boolean }) {
+  const { product, cover } = props.listing
+  return (
+    <li class="card">
+      <a href={`/p/${product.slug}`}>
+        {cover ? (
+          <Picture
+            image={cover.image}
+            derivatives={cover.derivatives}
+            sizes={props.sizes}
+            // The first row is above the fold on a phone; lazy-loading it would
+            // delay the largest paint on the slow networks this whole
+            // architecture is built around.
+            loading={props.eager ? 'eager' : 'lazy'}
+          />
+        ) : (
+          <div class="placeholder">No photograph yet</div>
+        )}
+        <h2>{product.title}</h2>
+        <p>{formatPaisa(product.pricePaisa)}</p>
+      </a>
+    </li>
+  )
+}
 
 /**
  * A horizontal scroll-snap row, not a stack. Stacking put the price a screen
@@ -228,6 +476,17 @@ function Shots(props: { images: ImageWithDerivatives[] }) {
       ))}
     </ul>
   )
+}
+
+function pieces(n: number): string {
+  return `${n} ${n === 1 ? 'piece' : 'pieces'}`
+}
+
+/** "Colour: Indigo", falling back to the slugs if a value left the catalogue mid-request. */
+function describe(facets: Facet[], nameSlug: string, valueSlug: string): string {
+  const facet = facets.find((f) => f.nameSlug === nameSlug)
+  const value = facet?.values.find((v) => v.valueSlug === valueSlug)
+  return `${facet?.name ?? nameSlug}: ${value?.value ?? valueSlug}`
 }
 
 /** A meta description is one line; the field is free text over many. */

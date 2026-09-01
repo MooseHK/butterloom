@@ -26,7 +26,7 @@ export function AdminLayout(
   props: PropsWithChildren<{
     title: string
     /** Which nav item is the current one. Omitted on pages that are in neither. */
-    section?: 'home' | 'products' | 'site-images' | 'orders'
+    section?: 'home' | 'products' | 'categories' | 'site-images' | 'orders'
     /** A way back up one level, for pages reached from a list. */
     back?: { href: string; label: string }
   }>,
@@ -76,6 +76,12 @@ export function AdminLayout(
                 aria-current={props.section === 'products' ? 'page' : undefined}
               >
                 Products
+              </a>
+              <a
+                href="/admin/categories"
+                aria-current={props.section === 'categories' ? 'page' : undefined}
+              >
+                Categories
               </a>
               <a
                 href="/admin/site-images"
@@ -193,5 +199,40 @@ const css = `
     .row { grid-template-columns: 1fr; }
     .row .span { grid-column: auto; }
   }
-`
 
+  /*
+    Below here is not styling, it is the panel being usable on the phone ADR-0003
+    puts it in front of — an operator standing in a stockroom, not sitting at a
+    desk. None of it changes how the admin looks on a desktop.
+
+    16px is the load-bearing one. iOS Safari zooms the page in whenever a control
+    under that size takes focus and does not zoom back out, so the operator is
+    left panning a magnified page for the rest of the session. The rest is the
+    44px target floor and a focus ring on everything that takes focus, several of
+    which had none — an accessibility failure independent of screen size.
+  */
+  input, textarea, select, button { font-size: 16px; min-height: 44px; padding: 10px; }
+  button { padding: 10px 16px; }
+  header nav a { display: inline-flex; align-items: center; min-height: 44px; }
+  .back { display: inline-flex; align-items: center; min-height: 44px; }
+  .cards h2 a { display: inline-flex; align-items: center; min-height: 44px; }
+  /* The row is 44px but the link inside it was only its own line box, so it
+     takes the whole cell back. */
+  td a { display: block; margin: -6px -10px; padding: 6px 10px; min-height: 32px; }
+  /* currentColor rather than a fixed colour, so one rule serves both schemes. */
+  a:focus-visible, button:focus-visible, input:focus-visible,
+  select:focus-visible, textarea:focus-visible, summary:focus-visible {
+    outline: 2px solid currentColor; outline-offset: 2px; }
+  /* Inset: this one sits inside a scroll container, which clips a ring drawn
+     outside the box. */
+  .table-wrap a:focus-visible { outline-offset: -2px; }
+  input[type=file] { padding: 6px; }
+  input[type=file]::file-selector-button { min-height: 32px; margin-right: 10px;
+    padding: 0 12px; border: 1px solid #8886; border-radius: 5px;
+    background: #8881; color: inherit; font: inherit; font-size: 15px; cursor: pointer; }
+  /* Buttons share the width on a phone rather than sitting thumb-sized against
+     the left edge; 9rem still fits a pair on one line at 360px. */
+  @media (max-width: 640px) {
+    .actions button, .order-actions button { flex: 1 1 9rem; }
+  }
+`

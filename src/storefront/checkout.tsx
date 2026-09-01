@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../db/client.js'
-import { cartItems, orderEvents, orderItems, orders, productStock } from '../db/schema.js'
+import { cartItems, orderEvents, orderItems, orders, productVariants } from '../db/schema.js'
 import { formatPaisa } from '../lib/money.js'
 import { StorefrontLayout } from '../views/storefront.js'
 import { getCartItemsForSession } from './queries.js'
@@ -110,7 +110,7 @@ checkoutRoutes.get('/', (c) => {
                   <div>
                     <span>
                       {item.product.title}
-                      {item.stock.variantLabel ? ` (${item.stock.variantLabel})` : ''}
+                      {item.variant.label === 'Standard' ? '' : ` (${item.variant.label})`}
                     </span>
                     <span class="muted"> × {item.cartItem.quantity}</span>
                   </div>
@@ -170,19 +170,19 @@ checkoutRoutes.post('/', async (c) => {
 
       // Check stock availability
       for (const item of items) {
-        if (item.stock.quantity < item.cartItem.quantity) {
-          const variantTxt = item.stock.variantLabel ? ` (${item.stock.variantLabel})` : ''
+        if (item.variant.stockQty < item.cartItem.quantity) {
+          const variantTxt = item.variant.label === 'Standard' ? '' : ` (${item.variant.label})`
           throw new Error(
-            `Insufficient stock for "${item.product.title}"${variantTxt}. Only ${item.stock.quantity} available.`,
+            `Insufficient stock for "${item.product.title}"${variantTxt}. Only ${item.variant.stockQty} available.`,
           )
         }
       }
 
       // Atomically decrement stock
       for (const item of items) {
-        tx.update(productStock)
-          .set({ quantity: item.stock.quantity - item.cartItem.quantity })
-          .where(eq(productStock.id, item.stock.id))
+        tx.update(productVariants)
+          .set({ stockQty: item.variant.stockQty - item.cartItem.quantity })
+          .where(eq(productVariants.id, item.variant.id))
           .run()
       }
 
@@ -215,7 +215,9 @@ checkoutRoutes.post('/', async (c) => {
             orderId: order.id,
             productId: item.product.id,
             productTitle: item.product.title,
-            variantLabel: item.stock.variantLabel,
+            // The label, not the id: an order line has to keep reading correctly
+            // after the variant behind it is renamed or deleted.
+            variantLabel: item.variant.label,
             pricePaisa: item.product.pricePaisa,
             quantity: item.cartItem.quantity,
           })

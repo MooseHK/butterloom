@@ -1,3 +1,6 @@
+// First, and it has to stay first: this picks the database before
+// src/db/client.ts opens one. See the file for why.
+import './support/tempDb.js'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { and, eq } from 'drizzle-orm'
@@ -11,7 +14,8 @@ import {
   orderItems,
   orders,
   products,
-  productStock,
+  productVariants,
+  variantOptions,
 } from '../src/db/schema.js'
 
 runMigrations()
@@ -36,8 +40,8 @@ function createOrderWithItems(
   if (!p) throw new Error('Product not created')
 
   const [s] = db
-    .insert(productStock)
-    .values({ productId: p.id, variantLabel: 'M', quantity: initialStock })
+    .insert(productVariants)
+    .values({ productId: p.id, label: 'M', stockQty: initialStock })
     .returning()
     .all()
   if (!s) throw new Error('Stock not created')
@@ -122,8 +126,8 @@ test('admin can cancel order from placed or packed and restock inventory', async
   assert.equal(updatedOrder?.fulfilmentState, 'cancelled')
 
   // Verify stock was restored
-  const [updatedStock] = db.select().from(productStock).where(eq(productStock.id, stock.id)).all()
-  assert.equal(updatedStock?.quantity, initialStock + itemQty)
+  const [updatedStock] = db.select().from(productVariants).where(eq(productVariants.id, stock.id)).all()
+  assert.equal(updatedStock?.stockQty, initialStock + itemQty)
 
   // Verify audit event
   const events = db.select().from(orderEvents).where(eq(orderEvents.orderId, order.id)).all()
@@ -146,8 +150,8 @@ test('admin can mark handed_over order as returned (RTO) and restock inventory',
   assert.equal(updatedOrder?.fulfilmentState, 'returned')
 
   // Verify stock was restored
-  const [updatedStock] = db.select().from(productStock).where(eq(productStock.id, stock.id)).all()
-  assert.equal(updatedStock?.quantity, initialStock + itemQty)
+  const [updatedStock] = db.select().from(productVariants).where(eq(productVariants.id, stock.id)).all()
+  assert.equal(updatedStock?.stockQty, initialStock + itemQty)
 })
 
 test('admin stock endpoints allow adding, updating and deleting variants', async () => {
@@ -159,12 +163,15 @@ test('admin stock endpoints allow adding, updating and deleting variants', async
     .all()
   if (!p) throw new Error('Product not created')
 
-  // 1. Add variant "L" with quantity 15
+  // 1. Add the large in indigo, with fifteen of them
   const addForm = new FormData()
-  addForm.set('variantLabel', 'L')
-  addForm.set('quantity', '15')
+  addForm.set('stock-0', '15')
+  addForm.set('oname-0-0', 'Colour')
+  addForm.set('ovalue-0-0', 'Indigo')
+  addForm.set('oname-0-1', 'Size')
+  addForm.set('ovalue-0-1', 'L')
 
-  const addRes = await app.request(`/admin/products/${p.id}/stock`, {
+  const addRes = await app.request(`/admin/products/${p.id}/variants`, {
     method: 'POST',
     body: addForm,
   })
@@ -172,18 +179,30 @@ test('admin stock endpoints allow adding, updating and deleting variants', async
 
   const [lStock] = db
     .select()
-    .from(productStock)
-    .where(eq(productStock.productId, p.id))
+    .from(productVariants)
+    .where(eq(productVariants.productId, p.id))
     .all()
   assert.ok(lStock)
-  assert.equal(lStock.variantLabel, 'L')
-  assert.equal(lStock.quantity, 15)
+  // The label is joined from the values rather than typed.
+  assert.equal(lStock.label, 'Indigo / L')
+  assert.equal(lStock.stockQty, 15)
 
-  // 2. Update stock of variant "L" to 25
+  // The axes are what the storefront filters on, so they have to be there.
+  const axes = db
+    .select()
+    .from(variantOptions)
+    .where(eq(variantOptions.variantId, lStock.id))
+    .all()
+  assert.deepEqual(
+    axes.map((a) => [a.nameSlug, a.valueSlug]).sort(),
+    [['colour', 'indigo'], ['size', 'l']],
+  )
+
+  // 2. Restock it to 25
   const updateForm = new FormData()
-  updateForm.set('quantity', '25')
+  updateForm.set('stock', '25')
 
-  const updateRes = await app.request(`/admin/products/${p.id}/stock/${lStock.id}/update`, {
+  const updateRes = await app.request(`/admin/products/${p.id}/variants/${lStock.id}`, {
     method: 'POST',
     body: updateForm,
   })
@@ -191,17 +210,17 @@ test('admin stock endpoints allow adding, updating and deleting variants', async
 
   const [updatedStock] = db
     .select()
-    .from(productStock)
-    .where(eq(productStock.id, lStock.id))
+    .from(productVariants)
+    .where(eq(productVariants.id, lStock.id))
     .all()
-  assert.equal(updatedStock?.quantity, 25)
+  assert.equal(updatedStock?.stockQty, 25)
 
-  // 3. Delete variant "L"
-  const deleteRes = await app.request(`/admin/products/${p.id}/stock/${lStock.id}/delete`, {
+  // 3. Delete it
+  const deleteRes = await app.request(`/admin/products/${p.id}/variants/${lStock.id}/delete`, {
     method: 'POST',
   })
   assert.equal(deleteRes.status, 303)
 
-  const remaining = db.select().from(productStock).where(eq(productStock.id, lStock.id)).all()
+  const remaining = db.select().from(productVariants).where(eq(productVariants.id, lStock.id)).all()
   assert.equal(remaining.length, 0)
 })
