@@ -1,3 +1,5 @@
+import { slugify } from '../lib/slug.js'
+
 /**
  * Reading the bulk product form. Split out from the page only so it can be
  * tested without opening a database or an encoder — the rules here are the ones
@@ -14,6 +16,13 @@ export interface DraftProduct {
   title: string
   description: string
   pricePaisa: number
+  /**
+   * Null is unshelved, which is a normal state for a product being set up. The
+   * number is only known to be integer-shaped here; that it names a category
+   * that exists is checked against the database by the route, because a
+   * hand-posted form can say any number it likes.
+   */
+  categoryId: number | null
   files: File[]
 }
 
@@ -31,9 +40,10 @@ export function parseRows(form: FormData): { drafts: DraftProduct[]; problems: s
     const title = String(form.get(`title-${i}`) ?? '').trim()
     const price = String(form.get(`price-${i}`) ?? '').trim()
     const description = String(form.get(`desc-${i}`) ?? '').trim()
+    const category = String(form.get(`category-${i}`) ?? '').trim()
     const files = form.getAll(`photos-${i}`).filter((f): f is File => f instanceof File && f.size > 0)
 
-    if (!title && !price && !description && files.length === 0) continue
+    if (!title && !price && !description && !category && files.length === 0) continue
 
     const label = `Row ${i + 1}`
     if (!title) {
@@ -45,29 +55,33 @@ export function parseRows(form: FormData): { drafts: DraftProduct[]; problems: s
       problems.push(`${label} (${title}): price must be a number above 0, skipped`)
       continue
     }
+    const categoryId = category ? Number(category) : null
+    if (categoryId !== null && (!Number.isSafeInteger(categoryId) || categoryId <= 0)) {
+      problems.push(`${label} (${title}): that is not a category, skipped`)
+      continue
+    }
     // Money is integer paisa everywhere (ADR-0006); round at the boundary, once.
-    drafts.push({ row: i + 1, title, description, pricePaisa: Math.round(priceBdt * 100), files })
+    drafts.push({
+      row: i + 1,
+      title,
+      description,
+      pricePaisa: Math.round(priceBdt * 100),
+      categoryId,
+      files,
+    })
   }
 
   return { drafts, problems }
 }
 
 /**
- * The slug is derived rather than typed: it is a URL, it has one obviously
- * correct value, and asking for it twenty times is exactly the field a bulk
- * form exists to remove. A title with nothing ASCII in it — Bengali, say —
- * slugifies to nothing, so it falls back and uniqueSlug numbers it.
+ * A title with nothing ASCII in it — Bengali, say — slugifies to nothing, so it
+ * falls back to a word and uniqueSlug numbers it. The slug is derived rather
+ * than typed: it is a URL, it has one obviously correct value, and asking for
+ * it twenty times is exactly the field a bulk form exists to remove.
  */
-export function slugify(title: string): string {
-  const slug = title
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80)
-    .replace(/-+$/, '')
-  return slug || 'product'
+export function productSlug(title: string): string {
+  return slugify(title, 'product')
 }
 
 /**

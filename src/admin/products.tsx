@@ -2,7 +2,15 @@ import { and, asc, count, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { config } from '../config.js'
 import { db } from '../db/client.js'
-import { pendingImages, productImages, products } from '../db/schema.js'
+import {
+  categories,
+  pendingImages,
+  productImages,
+  productVariants,
+  products,
+  variantOptions,
+} from '../db/schema.js'
+import type { Category } from '../db/schema.js'
 import { UploadError } from '../images/pipeline.js'
 import {
   drainQueue,
@@ -12,11 +20,18 @@ import {
   queueProductImage,
 } from '../images/queue.js'
 import { formatPaisa } from '../lib/money.js'
-import { derivativesFor } from '../storefront/queries.js'
+import {
+  derivativesFor,
+  facetsFor,
+  listCategories,
+  variantCounts,
+  variantsForProduct,
+} from '../storefront/queries.js'
 import { AdminLayout } from '../views/layout.js'
 import { Picture } from '../views/picture.js'
-import { maxRows, parseRows, slugify, uniqueSlug } from './bulkForm.js'
+import { maxRows, parseRows, productSlug, uniqueSlug } from './bulkForm.js'
 import type { DraftProduct } from './bulkForm.js'
+import { maxVariantRows, optionsPerRow, parseStock, parseVariantRows } from './variantForm.js'
 
 export const adminProducts = new Hono()
 
@@ -31,6 +46,8 @@ export const adminProducts = new Hono()
 
 /** Rows rendered without any script; enough for a normal restock. */
 const initialRows = 3
+/** The same, for the variants of one product: two sizes of one colour is typical. */
+const initialVariantRows = 3
 /**
  * A hundred products at four photographs each does not belong in one multipart
  * body — config.maxRequestBytes would refuse it long before this does, but this
@@ -45,7 +62,7 @@ const photoTypes = 'image/jpeg,image/png,image/webp,image/avif,image/tiff'
  * the page and the rows rendered into it are the same markup rather than two
  * copies that drift.
  */
-function Row(props: { i: number | string }) {
+function Row(props: { i: number | string; categories: Category[] }) {
   const i = props.i
   return (
     <div class="row">
@@ -56,6 +73,17 @@ function Row(props: { i: number | string }) {
       <label>
         Price (BDT)
         <input name={`price-${i}`} type="number" min="1" step="0.01" inputmode="decimal" />
+      </label>
+      <label>
+        Category
+        <select name={`category-${i}`}>
+          {/* Blank is unshelved, and it is the default: a product that has not
+              been decided about yet is not a product on the wrong shelf. */}
+          <option value="">Unshelved</option>
+          {props.categories.map((category) => (
+            <option value={category.id}>{category.name}</option>
+          ))}
+        </select>
       </label>
       <label class="span">
         Photographs
@@ -70,23 +98,69 @@ function Row(props: { i: number | string }) {
 }
 
 /**
+ * One row of the add-variants form. Stock is a number the operator keeps, not
+ * one the storefront reads: ADR-0007 keeps availability out of edge-cached HTML
+ * entirely, so nothing here ever reaches a customer's page.
+ *
+ * The label is not a field. It is joined from the values (see variantForm.ts),
+ * because a typed label is a second place the same fact is written.
+ */
+function VariantRow(props: { i: number | string }) {
+  const i = props.i
+  return (
+    <div class="row">
+      <label>
+        Stock
+        <input name={`stock-${i}`} type="number" min="0" step="1" inputmode="numeric" placeholder="0" />
+      </label>
+      <p class="muted">Blank counts as none in stock.</p>
+      {Array.from({ length: optionsPerRow }, (_, j) => (
+        <>
+          <label>
+            Axis
+            {/* The names already in use, offered rather than enforced — it is
+                what keeps Colour and Color from becoming two axes, and it is
+                enough discipline for one operator (schema.ts says the same). */}
+            <input
+              name={`oname-${i}-${j}`}
+              list="option-names"
+              maxlength={60}
+              placeholder={j === 0 ? 'Colour' : ''}
+            />
+          </label>
+          <label>
+            Value
+            <input name={`ovalue-${i}-${j}`} maxlength={60} placeholder={j === 0 ? 'Indigo' : ''} />
+          </label>
+        </>
+      ))}
+    </div>
+  )
+}
+
+/**
  * ADR-0007 rules out a client framework, not five lines of DOM. Without them
  * the form still works — it just stops at the rows rendered above, which is why
  * there are three rather than one.
+ *
+ * Both bulk forms on this file's pages use it, so the counts are arguments: the
+ * ids are the same because the two forms are never on the same page.
  */
-const addRowScript = `
+function addRowScript(initial: number, max: number): string {
+  return `
   var rows = document.getElementById('rows')
   var tpl = document.getElementById('row-template')
   var add = document.getElementById('add-row')
-  var next = ${initialRows}
+  var next = ${initial}
   add.hidden = false
   add.addEventListener('click', function () {
     rows.insertAdjacentHTML('beforeend', tpl.innerHTML.replaceAll('__i__', next++))
     var input = rows.lastElementChild.querySelector('input')
     if (input) input.focus()
-    if (next >= ${maxRows}) add.disabled = true
+    if (next >= ${max}) add.disabled = true
   })
 `
+}
 
 adminProducts.get('/', (c) => {
   const rows = db.select().from(products).orderBy(asc(products.title)).all()
@@ -99,6 +173,9 @@ adminProducts.get('/', (c) => {
       .map((r) => [r.productId, r.n] as const),
   )
   const pending = pendingByProduct()
+  const shelves = listCategories().map((c) => c.category)
+  const shelfNames = new Map(shelves.map((c) => [c.id, c.name] as const))
+  const variants = variantCounts(rows.map((p) => p.id))
   const error = c.req.query('error')
   const added = Number(c.req.query('added') ?? 0)
   const queued = Number(c.req.query('queued') ?? 0)
@@ -118,11 +195,11 @@ adminProducts.get('/', (c) => {
       <form class="bulk" method="post" action="/admin/products" enctype="multipart/form-data">
         <div id="rows">
           {Array.from({ length: initialRows }, (_, i) => (
-            <Row i={i} />
+            <Row i={i} categories={shelves} />
           ))}
         </div>
         <template id="row-template">
-          <Row i="__i__" />
+          <Row i="__i__" categories={shelves} />
         </template>
         <p class="actions">
           {/* Shown only once the script has wired it up: a button that does
@@ -137,14 +214,16 @@ adminProducts.get('/', (c) => {
           immediately and encoded in the background, so you never wait for the ladder.
         </p>
       </form>
-      <script dangerouslySetInnerHTML={{ __html: addRowScript }} />
+      <script dangerouslySetInnerHTML={{ __html: addRowScript(initialRows, maxRows) }} />
 
       <table>
         <thead>
           <tr>
             <th>Title</th>
             <th>Slug</th>
+            <th>Category</th>
             <th>Price</th>
+            <th>Variants</th>
             <th>Images</th>
           </tr>
         </thead>
@@ -157,7 +236,15 @@ adminProducts.get('/', (c) => {
                   <a href={`/admin/products/${p.id}`}>{p.title}</a>
                 </td>
                 <td class="muted">{p.slug}</td>
+                <td>
+                  {p.categoryId === null ? (
+                    <span class="muted">Unshelved</span>
+                  ) : (
+                    (shelfNames.get(p.categoryId) ?? <span class="muted">Unshelved</span>)
+                  )}
+                </td>
                 <td>{formatPaisa(p.pricePaisa)}</td>
+                <td>{variants.get(p.id) ?? 0}</td>
                 <td>
                   {imageCounts.get(p.id) ?? 0}
                   {tally?.queued ? <span class="muted"> · {tally.queued} encoding</span> : null}
@@ -187,6 +274,21 @@ adminProducts.post('/', async (c) => {
   const { drafts, problems } = parseRows(form)
   if (drafts.length === 0) {
     return fail(problems.join(' · ') || 'Nothing to add — fill in at least one row.')
+  }
+
+  // The select was rendered from this table, but the request need not have come
+  // from that page: a category id is checked against the database before it is
+  // written, not trusted because the form behind it was behind auth.
+  const shelves = new Set(
+    db
+      .select({ id: categories.id })
+      .from(categories)
+      .all()
+      .map((r) => r.id),
+  )
+  const unknown = drafts.find((d) => d.categoryId !== null && !shelves.has(d.categoryId))
+  if (unknown) {
+    return fail(`Row ${unknown.row} (${unknown.title}): no such category. Nothing was saved.`)
   }
 
   const files = drafts.flatMap((d) => d.files)
@@ -222,9 +324,10 @@ adminProducts.post('/', async (c) => {
           .insert(products)
           .values({
             title: draft.title,
-            slug: uniqueSlug(slugify(draft.title), taken),
+            slug: uniqueSlug(productSlug(draft.title), taken),
             description: draft.description,
             pricePaisa: draft.pricePaisa,
+            categoryId: draft.categoryId,
           })
           .returning({ id: products.id })
           .all()
@@ -281,8 +384,15 @@ adminProducts.get('/:id', (c) => {
   // same shape, and it sorts each ladder by width where this page did not.
   const byImage = derivativesFor(images)
   const waiting = pendingForProduct(id)
+  const shelves = listCategories().map((r) => r.category)
+  const variants = variantsForProduct(id)
+  // The axes already in use anywhere in the catalogue, not just on this product:
+  // the point of the datalist is to offer the spelling that exists before a
+  // second one is typed.
+  const axisNames = facetsFor(null).map((f) => f.name)
 
   const error = c.req.query('error')
+  const saved = c.req.query('saved')
   const uploaded = Number(c.req.query('uploaded') ?? 0)
 
   return c.html(
@@ -298,6 +408,7 @@ adminProducts.get('/:id', (c) => {
         </a>
       </p>
       {error ? <p class="notice error">{error}</p> : null}
+      {saved ? <p class="notice">{saved}</p> : null}
       {uploaded > 0 ? (
         <p class="notice">
           {uploaded} {uploaded === 1 ? 'photograph' : 'photographs'} accepted — encoding in the
@@ -305,6 +416,99 @@ adminProducts.get('/:id', (c) => {
         </p>
       ) : null}
 
+      <form method="post" action={`/admin/products/${product.id}/category`}>
+        <label>
+          Category
+          <select name="categoryId">
+            <option value="" selected={product.categoryId === null}>
+              Unshelved
+            </option>
+            {shelves.map((category) => (
+              <option value={category.id} selected={product.categoryId === category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p class="actions">
+          <button type="submit">Save category</button>
+        </p>
+      </form>
+
+      <h2>Variants</h2>
+      {variants.map(({ variant, options }) => (
+        <form
+          class="row"
+          method="post"
+          action={`/admin/products/${product.id}/variants/${variant.id}`}
+        >
+          <p class="span">
+            <strong>{variant.label}</strong>
+            {options.length > 0 ? (
+              <span class="muted"> · {options.map((o) => `${o.name}: ${o.value}`).join(' · ')}</span>
+            ) : null}
+          </p>
+          <label>
+            Stock
+            <input
+              name="stock"
+              type="number"
+              min="0"
+              step="1"
+              inputmode="numeric"
+              value={String(variant.stockQty)}
+            />
+          </label>
+          <p class="span actions">
+            <button type="submit">Save stock</button>
+            <button
+              type="submit"
+              formaction={`/admin/products/${product.id}/variants/${variant.id}/delete`}
+            >
+              Delete
+            </button>
+          </p>
+        </form>
+      ))}
+      {variants.length === 0 ? (
+        <p class="muted">
+          None yet. A product with one configuration still wants one variant — that is what an
+          order will eventually hold.
+        </p>
+      ) : null}
+
+      <form class="bulk" method="post" action={`/admin/products/${product.id}/variants`}>
+        <div id="rows">
+          {Array.from({ length: initialVariantRows }, (_, i) => (
+            <VariantRow i={i} />
+          ))}
+        </div>
+        <template id="row-template">
+          <VariantRow i="__i__" />
+        </template>
+        <p class="actions">
+          <button type="button" id="add-row" hidden>
+            Add another row
+          </button>
+          <button type="submit">Add variants</button>
+        </p>
+        <p class="muted">
+          Blank rows are ignored. The label is the values joined — Indigo / M — so two rows with
+          the same options are one variant entered twice, and the second is refused rather than
+          saved. Stock stays in the back office: nothing on the storefront reads it (ADR-0007).
+        </p>
+      </form>
+      {/* Shared by every row, including the ones the script clones. */}
+      <datalist id="option-names">
+        {axisNames.map((name) => (
+          <option value={name} />
+        ))}
+      </datalist>
+      <script
+        dangerouslySetInnerHTML={{ __html: addRowScript(initialVariantRows, maxVariantRows) }}
+      />
+
+      <h2>Photographs</h2>
       <form method="post" action={`/admin/products/${product.id}/images`} enctype="multipart/form-data">
         <label>
           Photographs
@@ -418,4 +622,157 @@ adminProducts.post('/:id/pending/:pendingId/discard', (c) => {
     )
     .run()
   return c.redirect(`/admin/products/${id}`, 303)
+})
+
+/**
+ * The shelf this product stands on, or none. A POST of its own rather than a
+ * field on a larger form because it is the only thing on this page that is not
+ * an image or a variant, and a one-field form has one way to go wrong.
+ */
+adminProducts.post('/:id/category', async (c) => {
+  const id = Number(c.req.param('id'))
+  const [product] = db.select().from(products).where(eq(products.id, id)).all()
+  if (!product) return c.notFound()
+  const back = `/admin/products/${id}`
+  const fail = (message: string) => c.redirect(`${back}?error=${encodeURIComponent(message)}`, 303)
+
+  const form = await c.req.formData().catch(() => null)
+  if (!form) return fail('That submit was not readable.')
+
+  const raw = String(form.get('categoryId') ?? '').trim()
+  const categoryId = raw ? Number(raw) : null
+  if (categoryId !== null) {
+    // Looked up rather than trusted: the select was rendered from this table,
+    // but the request need not have come from that page, and a number that is
+    // not a category would write a dangling id.
+    const [category] = db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(eq(categories.id, categoryId))
+      .all()
+    if (!category) return fail('No such category. Nothing was changed.')
+  }
+  db.update(products).set({ categoryId }).where(eq(products.id, id)).run()
+  const message = categoryId === null ? 'Unshelved.' : 'Category saved.'
+  return c.redirect(`${back}?saved=${encodeURIComponent(message)}`, 303)
+})
+
+adminProducts.post('/:id/variants', async (c) => {
+  const id = Number(c.req.param('id'))
+  const [product] = db.select().from(products).where(eq(products.id, id)).all()
+  if (!product) return c.notFound()
+  const back = `/admin/products/${id}`
+  const fail = (message: string) => c.redirect(`${back}?error=${encodeURIComponent(message)}`, 303)
+
+  const form = await c.req.formData().catch(() => null)
+  if (!form) return fail('That submit was not readable.')
+
+  const existing = db
+    .select({ label: productVariants.label, position: productVariants.position })
+    .from(productVariants)
+    .where(eq(productVariants.productId, id))
+    .all()
+  // The labels this product already carries go in with the ones this submit
+  // derives, so a repeat is a sentence rather than a UNIQUE error thrown
+  // halfway through the batch.
+  const { drafts, problems } = parseVariantRows(form, new Set(existing.map((v) => v.label)))
+  if (drafts.length === 0) {
+    return fail(problems.join(' · ') || 'Nothing to add — fill in at least one row.')
+  }
+
+  // New variants go after the ones already there; the operator reorders by
+  // deleting and re-adding, which is cheap while a product has three of them.
+  let position = existing.reduce((n, v) => Math.max(n, v.position + 1), 0)
+  try {
+    // A variant without its options is a label nobody can filter on, so the two
+    // inserts are one transaction or neither.
+    db.transaction((tx) => {
+      for (const draft of drafts) {
+        const [row] = tx
+          .insert(productVariants)
+          .values({
+            productId: id,
+            label: draft.label,
+            stockQty: draft.stockQty,
+            position: position++,
+          })
+          .returning({ id: productVariants.id })
+          .all()
+        if (!row) throw new Error('insert returned no row')
+        if (draft.options.length > 0) {
+          tx.insert(variantOptions)
+            .values(draft.options.map((option) => ({ variantId: row.id, ...option })))
+            .run()
+        }
+      }
+    })
+  } catch (err) {
+    console.error('[admin] variants', err)
+    // The label check above is read-then-write, so a second tab can still slip
+    // between them. The index is what actually holds it shut; this is what
+    // turns that into something an operator can read.
+    return fail(
+      String(err).includes('UNIQUE')
+        ? 'Two variants of one product cannot have the same options. Nothing was saved.'
+        : 'Could not save these variants. See the server log.',
+    )
+  }
+
+  const query = new URLSearchParams({
+    saved: `Added ${drafts.length} ${drafts.length === 1 ? 'variant' : 'variants'}.`,
+  })
+  if (problems.length) query.set('error', problems.join(' · ').slice(0, 400))
+  return c.redirect(`${back}?${query}`, 303)
+})
+
+adminProducts.post('/:id/variants/:variantId', async (c) => {
+  const id = Number(c.req.param('id'))
+  const back = `/admin/products/${id}`
+
+  const form = await c.req.formData().catch(() => null)
+  // 'reject', not 'zero': this field is rendered pre-filled with the figure it
+  // is about to replace, so an empty one is a cleared box rather than a count
+  // of none. The add form below renders its rows empty and asks for the other
+  // reading.
+  const stockQty = parseStock(String(form?.get('stock') ?? ''), 'reject')
+  if (stockQty === null) {
+    const message = 'Stock must be a whole number, 0 or more. Nothing was changed.'
+    return c.redirect(`${back}?error=${encodeURIComponent(message)}`, 303)
+  }
+
+  // Matched on both halves of the path, like the discard above: a stale form
+  // cannot re-stock another product's variant on a mistyped id. Nothing matching
+  // is reported rather than answered with "saved" — a stock figure is the one
+  // number here somebody will later act on.
+  const updated = db
+    .update(productVariants)
+    .set({ stockQty })
+    .where(
+      and(
+        eq(productVariants.id, Number(c.req.param('variantId'))),
+        eq(productVariants.productId, id),
+      ),
+    )
+    .run()
+  const message = updated.changes === 0 ? 'No such variant.' : 'Stock saved.'
+  return c.redirect(`${back}?${updated.changes === 0 ? 'error' : 'saved'}=${encodeURIComponent(message)}`, 303)
+})
+
+adminProducts.post('/:id/variants/:variantId/delete', (c) => {
+  const id = Number(c.req.param('id'))
+  // variant_options cascades (schema.ts), so the axes go with the variant.
+  const deleted = db
+    .delete(productVariants)
+    .where(
+      and(
+        eq(productVariants.id, Number(c.req.param('variantId'))),
+        eq(productVariants.productId, id),
+      ),
+    )
+    .run()
+  const message = deleted.changes === 0 ? 'No such variant.' : 'Variant deleted.'
+  return c.redirect(
+    `/admin/products/${id}?${deleted.changes === 0 ? 'error' : 'saved'}=${encodeURIComponent(message)}`,
+    303,
+  )
 })

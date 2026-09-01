@@ -2,9 +2,10 @@
 
 Direct-to-consumer South Asian ethnic fashion, selling online in Bangladesh.
 
-Implementation has started. What runs today: the product record, the image
-upload pipeline behind it, and the customer-facing catalogue and product pages.
-See [Running the application](#running-the-application).
+Implementation has started. What runs today: the product record with its
+categories and variants, the image upload pipeline behind it, and the
+customer-facing catalogue, category and product pages. See
+[Running the application](#running-the-application).
 
 ## Where the thinking lives
 
@@ -57,10 +58,20 @@ npm start                                # http://localhost:3000/admin
 - **Admin index** — `/admin` lists what there is to edit and how much of it
   there is. Everything under `/admin` is `private, no-store` at the origin as
   well as excluded from the cache rules (ADR-0007).
-- **Products** — title, description, price in integer paisa (ADR-0006). Added in
-  bulk: one form of rows, photographs attached to the row that owns them, one
-  submit. The slug is derived from the title and numbered on collision, so it is
-  not a field anyone types twenty times.
+- **Products** — title, description, price in integer paisa (ADR-0006), and the
+  shelf it stands on. Added in bulk: one form of rows, photographs attached to
+  the row that owns them, one submit. The slug is derived from the title and
+  numbered on collision, so it is not a field anyone types twenty times.
+- **Categories** — `/admin/categories`, one form per shelf: a name and a position
+  in the order of the front-page tiles. The slug is derived from the name once
+  and then kept, because `/c/sarees` is a live URL and a rename is a change of
+  caption rather than of shelf. Deleting a shelf unshelves what stood on it
+  rather than deleting it (ADR-0008).
+- **Variants** — the buyable configurations of one product, edited on its page: a
+  row is a stock count and up to three free-text option pairs, Colour: Indigo and
+  Size: M, with the label joined from the values rather than typed. A product
+  that comes one way carries one row. Stock lives here because that is what
+  Reservation will hold, and no storefront page reads it (ADR-0008).
 - **Image upload** — many photographs per submit. The bytes are stored and the
   POST returns; a single background worker cuts each derivative ladder off a
   `pending_images` queue, so an operator never waits for an encode and a restart
@@ -78,16 +89,29 @@ npm start                                # http://localhost:3000/admin
   sentence saying why, rather than half-applied.
 - **`<picture>` rendering** — AVIF then WebP then a JPEG fallback, with `srcset`,
   `sizes` and intrinsic `width`/`height` so nothing shifts as images arrive.
-- **Catalogue and product pages** — `/` and `/p/:slug`, server-rendered, no client
-  JavaScript, marked `public` with a short browser TTL and a longer shared one so
-  the Dhaka PoP answers. Neither page renders availability, and neither ever
+- **Storefront** — `/` is the front page: the hero slot, a tile for every shelf
+  with something standing on it, and a rail of the newest pieces. `/shop` lists
+  the whole catalogue and `/c/:slug` lists one shelf, which are the same document
+  with a different scope — a sort, checkboxes over the variant options present in
+  that scope, a removable chip per applied value, and paging. `/p/:slug` is the
+  product, and says which colours and sizes it comes in. All server-rendered, no
+  client JavaScript, marked `public` with a short browser TTL and a longer shared
+  one so the Dhaka PoP answers. No page renders availability, and none ever
   should: ADR-0007 keeps the promise that a stale page cannot assert something
   false about stock by having it assert nothing at all. A middleware refuses to
   mark any response cacheable if it carries `Set-Cookie` and logs it, because a
   CDN would otherwise decline to cache it with no error and no symptom.
+- **One URL per listing** — filter and sort are GET parameters, so a filtered view
+  is a page that can be cached, shared and crawled. Unknown axes and values are
+  dropped, what survives is sorted into one canonical order, and any other
+  spelling of the same listing is 301-redirected to it. Every distinct query
+  string is its own CDN cache entry, so an unvalidated parameter is an unbounded
+  number of them (ADR-0008).
 
-There is no add-to-cart button yet. It is the first thing the cart slice adds,
-and it is the one response on the storefront allowed to issue a cookie.
+There is still no add-to-cart button. The product page names the colours and
+sizes a piece comes in, but as type rather than as a picker: choosing a variant
+is the first thing the cart slice adds, and that POST is the one response on the
+storefront allowed to issue a cookie.
 
 Two things to know about the current environment. AVIF is in the ladder but this
 machine's libvips has no AV1 encoder, so uploads produce WebP and JPEG only; the

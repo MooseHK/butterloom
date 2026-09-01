@@ -52,7 +52,13 @@ function migrateTo(sqlite: Database.Database, stopBefore?: string): void {
   }
 }
 
-const site = journal.entries.at(-1)?.tag as string
+/**
+ * Pinned by name, not taken as the last entry in the journal. It was the last
+ * entry when this file was written, and the test below quietly stopped
+ * exercising the rebuild the moment a later migration was added — it still
+ * passed, against a migration that does not touch the table at all.
+ */
+const site = '0002_site_images'
 
 function seedProductImage(sqlite: Database.Database): void {
   sqlite.exec(`
@@ -159,4 +165,117 @@ test('two product ladders do not collide, and nulls do not collide either', () =
         VALUES (1, 'jpeg', 320, 400, 10, 'y', 'k2')`),
     /UNIQUE constraint failed/,
   )
+})
+
+/**
+ * 0004 adds categories and variants. Two things in it are worth holding shut.
+ *
+ * The first is a correction: drizzle-kit emitted the products.category_id
+ * foreign key without the ON DELETE the schema declares, which would make
+ * deleting a category a constraint error instead of the unshelving it is
+ * documented to be. The clause is added by hand in the .sql, and a regenerated
+ * migration would silently drop it again.
+ *
+ * The second is that ADD COLUMN has to leave the products already in the table
+ * alone. A catalogue that is live when this runs must come out the other side
+ * with every product still in it, simply belonging to no category yet.
+ */
+const categoriesAndVariants = '0004_categories_and_variants'
+
+test('deleting a category unshelves its products rather than refusing', () => {
+  const sqlite = freshDb()
+  migrateTo(sqlite)
+  sqlite.exec(`
+    INSERT INTO categories (id, slug, name) VALUES (1, 'sarees', 'Sarees');
+    INSERT INTO products (id, slug, title, price_paisa, category_id)
+      VALUES (1, 'a', 'A', 100, 1), (2, 'b', 'B', 200, 1);
+  `)
+
+  // Without ON DELETE set null this raises FOREIGN KEY constraint failed, and
+  // an operator can never delete a shelf that has ever held anything.
+  sqlite.exec('DELETE FROM categories WHERE id = 1')
+
+  const rows = sqlite
+    .prepare('SELECT id, category_id FROM products ORDER BY id')
+    .all() as { id: number; category_id: number | null }[]
+  assert.deepEqual(
+    rows,
+    [
+      { id: 1, category_id: null },
+      { id: 2, category_id: null },
+    ],
+    'deleting a shelf must unshelve what stood on it, not delete it',
+  )
+})
+
+test('products that predate the category column survive it', () => {
+  const sqlite = freshDb()
+  migrateTo(sqlite, categoriesAndVariants)
+  sqlite.exec(`INSERT INTO products (id, slug, title, price_paisa) VALUES (1, 'tee', 'Tee', 250000)`)
+
+  applyMigration(sqlite, categoriesAndVariants)
+
+  const rows = sqlite
+    .prepare('SELECT id, slug, price_paisa, category_id FROM products')
+    .all() as { id: number; slug: string; price_paisa: number; category_id: number | null }[]
+  assert.deepEqual(rows, [{ id: 1, slug: 'tee', price_paisa: 250000, category_id: null }])
+})
+
+test('deleting a product takes its variants and their options with it', () => {
+  const sqlite = freshDb()
+  migrateTo(sqlite)
+  sqlite.exec(`
+    INSERT INTO products (id, slug, title, price_paisa) VALUES (1, 'a', 'A', 100);
+    INSERT INTO product_variants (id, product_id, label) VALUES (1, 1, 'Indigo / M');
+    INSERT INTO variant_options (variant_id, name, name_slug, value, value_slug)
+      VALUES (1, 'Colour', 'colour', 'Indigo', 'indigo'), (1, 'Size', 'size', 'M', 'm');
+  `)
+
+  sqlite.exec('DELETE FROM products WHERE id = 1')
+
+  // The options cascade through the variant, which is two hops — the thing that
+  // silently does not happen when foreign_keys is left off.
+  const variants = sqlite.prepare('SELECT count(*) AS n FROM product_variants').get() as { n: number }
+  const options = sqlite.prepare('SELECT count(*) AS n FROM variant_options').get() as { n: number }
+  assert.equal(variants.n, 0)
+  assert.equal(options.n, 0, 'an option row orphaned here would be invisible and unreachable')
+})
+
+test('a product cannot carry the same variant twice, but two products can', () => {
+  const sqlite = freshDb()
+  migrateTo(sqlite)
+  sqlite.exec(`
+    INSERT INTO products (id, slug, title, price_paisa) VALUES (1, 'a', 'A', 100), (2, 'b', 'B', 100);
+    INSERT INTO product_variants (product_id, label) VALUES (1, 'Indigo / M');
+  `)
+
+  assert.throws(
+    () => sqlite.exec(`INSERT INTO product_variants (product_id, label) VALUES (1, 'Indigo / M')`),
+    /UNIQUE constraint failed/,
+    'the same configuration entered twice is one variant, not two',
+  )
+  // Every product has its own medium; the index is scoped to the product.
+  sqlite.exec(`INSERT INTO product_variants (product_id, label) VALUES (2, 'Indigo / M')`)
+})
+
+test('a variant holds one value per axis', () => {
+  const sqlite = freshDb()
+  migrateTo(sqlite)
+  sqlite.exec(`
+    INSERT INTO products (id, slug, title, price_paisa) VALUES (1, 'a', 'A', 100);
+    INSERT INTO product_variants (id, product_id, label) VALUES (1, 1, 'Indigo / M');
+    INSERT INTO variant_options (variant_id, name, name_slug, value, value_slug)
+      VALUES (1, 'Colour', 'colour', 'Indigo', 'indigo');
+  `)
+
+  assert.throws(
+    () =>
+      sqlite.exec(`INSERT INTO variant_options (variant_id, name, name_slug, value, value_slug)
+        VALUES (1, 'Colour', 'colour', 'Ecru', 'ecru')`),
+    /UNIQUE constraint failed/,
+    'a variant is not both indigo and ecru',
+  )
+  // A second axis on the same variant is the normal case and must still fit.
+  sqlite.exec(`INSERT INTO variant_options (variant_id, name, name_slug, value, value_slug)
+    VALUES (1, 'Size', 'size', 'M', 'm')`)
 })
