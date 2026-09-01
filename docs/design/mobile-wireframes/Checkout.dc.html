@@ -187,7 +187,18 @@ const TREE = {
   },
 };
 
-class Component extends DCLogic {
+/* Fall back to a minimal stand-in when support.js hasn't supplied DCLogic,
+   so this artboard runs the city -> zone -> area cascade on its own. */
+const DCLogicBase = typeof DCLogic !== 'undefined' ? DCLogic : class {
+  constructor(props) {
+    this.props = props;
+  }
+  setState(patch) {
+    this.state = Object.assign({}, this.state, patch);
+  }
+};
+
+class Component extends DCLogicBase {
   constructor(props) {
     super(props);
     this.state = { city: '', zone: '', area: '' };
