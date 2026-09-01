@@ -23,10 +23,11 @@ WORKDIR /app
 # Copy production node_modules from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
-# Copy application source and drizzle migrations
+# Copy application source, assets, and drizzle migrations
 COPY package.json tsconfig.json drizzle.config.ts ./
 COPY src ./src
 COPY drizzle ./drizzle
+COPY assets ./assets
 
 # Persistent data lives here — mount a volume at /app/var
 RUN mkdir -p /app/var/media
