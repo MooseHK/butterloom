@@ -149,7 +149,7 @@ const css = `
     letter-spacing: 0.17em; text-transform: uppercase; }
   header.site { display: flex; align-items: center; justify-content: center;
     height: 58px; padding: 0 14px; border-bottom: 1px solid var(--hairline); }
-  .wm { display: flex; align-items: center; gap: 9px; }
+  .wm { display: flex; align-items: center; gap: 9px; min-height: 44px; }
   .wm b { font: 400 14px/1 ui-serif, Georgia, "Times New Roman", serif;
     letter-spacing: 0.26em; text-transform: uppercase; }
 
