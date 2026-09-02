@@ -113,6 +113,37 @@ test('admin can advance order through placed -> packed -> handed_over -> deliver
   assert.equal(events.length, 4) // initial + 3 advances
 })
 
+/**
+ * The redirect after advancing has to be a place the operator can actually
+ * land. It once wasn't: the tab was only appended on the delivered hop, so
+ * every earlier hop redirected to `/admin/orders&notice=…` — an `&` where the
+ * `?` belonged, which is a path rather than a query, and so a 404. Delivered
+ * was the one state that worked, which is exactly what makes it worth
+ * following the Location here rather than trusting the 303.
+ */
+test('every advance hop redirects to a page that exists, notice intact', async () => {
+  const app = buildAdminApp()
+  const { order } = createOrderWithItems('placed')
+
+  for (const expected of ['Packed', 'Handed over', 'Delivered']) {
+    const res = await app.request(`/admin/orders/${order.id}/advance`, { method: 'POST' })
+    assert.equal(res.status, 303)
+
+    const location = res.headers.get('Location') ?? ''
+    const landed = await app.request(location)
+    assert.equal(landed.status, 200, `advancing to ${expected} redirected to a 404: ${location}`)
+
+    // The notice is the operator's confirmation that the click did something,
+    // so it has to survive the round trip readably rather than as escaping.
+    const body = await landed.text()
+    assert.match(body, new RegExp(`<p class="notice">[^<]*advanced to ${expected}</p>`))
+  }
+
+  // Delivered leaves the active board, so it lands on the tab holding it now.
+  const [delivered] = db.select().from(orders).where(eq(orders.id, order.id)).all()
+  assert.equal(delivered?.fulfilmentState, 'delivered')
+})
+
 test('admin can cancel order from placed or packed and restock inventory', async () => {
   const app = buildAdminApp()
   const itemQty = 3

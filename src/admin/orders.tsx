@@ -539,11 +539,16 @@ adminOrders.post('/:id/advance', (c) => {
       .run()
   })
 
-  const targetTab = nextState === 'delivered' ? '?tab=previous' : ''
-  return c.redirect(
-    `/admin/orders${targetTab}&notice=${encodeURIComponent(`Order ${formatOrderId(id)} advanced to ${formatFulfilmentState(nextState)}`)}`,
-    303,
-  )
+  // Built as params rather than spliced together, because the tab is only
+  // present on the delivered hop: concatenating a conditional `?tab=…` with a
+  // fixed `&notice=…` produced `/admin/orders&notice=…` on every other hop —
+  // a path, not a query, and so a 404.
+  const params = new URLSearchParams()
+  // Delivered leaves the active board, so the operator is sent to the tab the
+  // order just landed on rather than to the one it disappeared from.
+  if (nextState === 'delivered') params.set('tab', 'previous')
+  params.set('notice', `Order ${formatOrderId(id)} advanced to ${formatFulfilmentState(nextState)}`)
+  return c.redirect(`/admin/orders?${params}`, 303)
 })
 
 adminOrders.post('/:id/cancel', (c) => {
