@@ -198,11 +198,7 @@ function listing(c: Context, basePath: string, category: Category | null) {
   // every distinct `?q=` a visitor can type is a junk URL in Google's index,
   // and Google says so outright. `follow`, not `nofollow`: the products linked
   // from it are exactly as worth crawling as ever.
-  const noindex = searching && isSearching(params)
-  // The bare /search landing has nothing to list yet, so it offers a way in
-  // rather than an empty grid — the same tiles the front page draws.
-  const landing = searching && !isSearching(params)
-  const shelves = landing ? listCategories().filter((shelf) => shelf.productCount > 0) : []
+  const landing = searching && search === ''
 
   return c.html(
     <StorefrontLayout
