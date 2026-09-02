@@ -59,7 +59,15 @@ export function AdminLayout(
             site images — or back from the storefront — meant the browser's own
             back button, which is not navigation, it is the absence of it.
           */}
-          <header>
+          {/*
+            Classed rather than styled as a bare `header`, which is what the
+            sheet used to do. A bare element selector for the page chrome
+            matches every <header> anywhere on the page — including the one
+            inside an order receipt, which it laid out as a flex row and
+            printed the shop name, the order number and the date on one line.
+            The chrome gets a name; the element stays available to components.
+          */}
+          <header class="chrome">
             <a class="wm" href="/admin">
               Butterloom admin
             </a>
@@ -145,18 +153,18 @@ const css = `
   }
   *, *::before, *::after { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.5 system-ui, sans-serif; min-width: 0; background: var(--paper); color: var(--ink); }
-  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px;
+  .chrome { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px;
     padding: 12px 20px; border-bottom: 1px solid var(--hairline); }
-  header a { text-decoration: none; color: inherit; }
-  header .wm { font-weight: 600; }
-  header nav { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
-  header nav a { padding-bottom: 2px; border-bottom: 2px solid transparent; color: var(--secondary); }
-  header nav a:hover { color: inherit; }
+  .chrome a { text-decoration: none; color: inherit; }
+  .chrome .wm { font-weight: 600; }
+  .chrome nav { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  .chrome nav a { padding-bottom: 2px; border-bottom: 2px solid transparent; color: var(--secondary); }
+  .chrome nav a:hover { color: inherit; }
   /* The current section, named for assistive tech and shown to everyone else.
      Colour alone would not carry it. */
-  header nav a[aria-current="page"] { color: inherit; font-weight: 600;
+  .chrome nav a[aria-current="page"] { color: inherit; font-weight: 600;
     border-bottom-color: currentColor; }
-  header nav a.out { margin-left: auto; }
+  .chrome nav a.out { margin-left: auto; }
   .back { display: inline-block; margin: 4px 0 -4px; font-size: 13px; color: var(--secondary);
     text-decoration: none; }
   .back:hover { color: inherit; }
@@ -204,12 +212,131 @@ const css = `
   .tab { padding: 8px 14px; text-decoration: none; color: var(--secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; }
   .tab:hover { color: inherit; }
   .tab.active, .tab[aria-current="true"] { color: inherit; font-weight: 600; border-bottom-color: currentColor; }
-  .order-card { border: 1px solid var(--hairline); border-radius: 8px; padding: 16px; margin: 14px 0; }
-  .order-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
-  .order-meta { font-size: 13px; color: var(--secondary); margin: 0 0 10px; }
-  .order-details { margin: 12px 0; font-size: 14px; }
+  .order-group { margin-bottom: 32px; }
   .order-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
   .order-actions form { margin: 0; display: inline-block; max-width: none; width: auto; }
+
+  /*
+    The status filter, as tabs above whichever board is open. Distinct from
+    .tabs above it — that one switches board, this one narrows it — so it is
+    pills on the paper rather than a second underlined row, which would read as
+    two rows of the same control.
+  */
+  .status-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; }
+  .status-tab { display: inline-flex; align-items: center; gap: 7px; min-height: 40px;
+    padding: 6px 14px; border: 1px solid var(--hairline); border-radius: 999px;
+    text-decoration: none; color: var(--secondary); font-size: 14px; }
+  .status-tab:hover { color: inherit; border-color: var(--dot); }
+  /*
+    --ink on --paper rather than the --strip pair, because --strip is only a
+    shade off --paper in the dark scheme: the selected pill came out almost
+    the same colour as the page and stopped reading as selected at all. This
+    inverts the body colours, so it is a solid block in both schemes.
+  */
+  .status-tab.active { color: var(--paper); background: var(--ink);
+    border-color: var(--ink); font-weight: 600; }
+  .status-tab-n { font-size: 12px; font-variant-numeric: tabular-nums;
+    padding: 1px 7px; border-radius: 999px; background: var(--hairline); color: var(--ink); }
+  /* Outlined in the pill's own text colour, which is legible whichever way
+     round the inversion went. */
+  .status-tab.active .status-tab-n { background: transparent; color: inherit;
+    box-shadow: inset 0 0 0 1px currentColor; }
+
+  /*
+    Active orders as paper receipts.
+
+    An operator works this board against a stack of real printed receipts, so
+    the card reads in the same order as the paper — who, what, how much, total
+    under a rule at the foot. Monospace and a column of right-aligned amounts
+    are what make the two checkable against each other at a glance.
+
+    Deliberately low fidelity: the outline and the formatting only. The torn
+    top and bottom are two dashed borders, not a zigzag gradient; there is no
+    paper texture, no shadow and no curl. It should read as a receipt across
+    the room and as an admin panel when you look at it.
+  */
+  /*
+    Capped at 21rem and packed from the left rather than stretched to 1fr: a
+    receipt that grows to half a laptop screen stops reading as a receipt, and
+    a group holding one order would otherwise print a 500px-wide slip. The min
+    keeps it inside a 360px phone.
+  */
+  .receipts { display: grid; gap: 16px; align-items: start; justify-content: start;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 21rem)); }
+  .receipt { position: relative; padding: 16px 16px 14px; background: var(--shot);
+    border: 1px solid var(--hairline);
+    /* The tear. Heavier and dashed on the two cut edges, hairline on the sides
+       the roll was never cut along. */
+    border-top: 2px dashed var(--dot); border-bottom: 2px dashed var(--dot);
+    font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums; }
+  .receipt p { margin: 0; }
+  .receipt-head { text-align: center; padding-bottom: 10px;
+    border-bottom: 1px dashed var(--hairline); }
+  .receipt-shop { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--secondary); }
+  .receipt-no { font-size: 17px; font-weight: 600; letter-spacing: 0.04em; margin-top: 2px; }
+  .receipt-when { font-size: 11.5px; color: var(--secondary); }
+  /* Room for the pen, which is absolutely positioned into this corner. */
+  .receipt-head { padding-right: 26px; padding-left: 26px; }
+  .receipt-status { display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 9px 0; border-bottom: 1px dashed var(--hairline); }
+  .receipt-k { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--secondary); }
+  .receipt-who { padding: 9px 0; border-bottom: 1px dashed var(--hairline);
+    overflow-wrap: anywhere; }
+  .receipt-name { font-weight: 600; }
+  .receipt-addr, .receipt-note { color: var(--secondary); white-space: pre-wrap; }
+  .receipt-note { margin-top: 4px; }
+  .receipt-lines { list-style: none; margin: 0; padding: 9px 0; }
+  /* The quantity, the thing, and the money — the money in its own column so a
+     stack of receipts totals down the right-hand edge. */
+  .receipt-lines li { display: grid; grid-template-columns: 2.2rem 1fr auto; gap: 0 6px;
+    padding: 2px 0; }
+  .receipt-qty { color: var(--secondary); }
+  .receipt-what { overflow-wrap: anywhere; }
+  .receipt-variant { color: var(--secondary); }
+  .receipt-amt { text-align: right; white-space: nowrap; }
+  .receipt-total { display: flex; justify-content: space-between; gap: 8px;
+    padding-top: 9px; border-top: 1px dashed var(--hairline); font-weight: 600; }
+  .receipt-pay { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--secondary); margin-top: 2px; }
+
+  /* The pen. One target per receipt instead of a row of buttons under each. */
+  .receipt-pen { position: absolute; top: 8px; right: 8px; z-index: 2;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 38px; height: 38px; min-height: 38px; padding: 0;
+    border: 1px solid transparent; border-radius: 999px;
+    background: transparent; color: var(--secondary); cursor: pointer; }
+  .receipt-pen:hover { color: var(--ink); border-color: var(--hairline); background: var(--paper); }
+
+  /*
+    The dialog is a panel, not a receipt. It is rendered inside the <article
+    class="receipt"> it belongs to, so without this it inherits the receipt's
+    monospace and the whole thing reads as a terminal window.
+  */
+  .order-dialog { font: 15px/1.5 system-ui, sans-serif; }
+  .order-dialog h3 { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--secondary); margin: 0 0 6px; }
+  .order-dialog section { margin: 18px 0 0; padding-top: 14px;
+    border-top: 1px solid var(--hairline); }
+  .order-dialog section p { margin: 0 0 3px; }
+  .dialog-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .dialog-top > div { min-width: 0; }
+  .dialog-top p { margin: 0; }
+  .dialog-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    margin: 0 0 2px; font-size: 1.2rem; }
+  .dialog-dismiss { margin: 0; display: block; max-width: none; width: auto; flex: 0 0 auto; }
+  .dialog-name { font-weight: 600; }
+  .dialog-addr { white-space: pre-wrap; }
+  .dialog-total { text-align: right; font-weight: 600; margin-top: 8px; }
+  /*
+    [open] is load-bearing, not tidiness. A closed dialog is hidden by
+    display:none in the UA sheet, so an unqualified .order-dialog rule setting
+    display:flex outranks it — and then every dialog on the page renders
+    inline, always open, every order's details spilled down the board.
+  */
+  .order-dialog[open] { display: flex; flex-direction: column; }
   .chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
   .chip.placed { background: #e8a83833; color: #d97706; }
   .chip.packed { background: #3b82f633; color: #2563eb; }
@@ -217,9 +344,19 @@ const css = `
   .chip.delivered { background: #22c55e33; color: #16a34a; }
   .chip.returned { background: #ef444433; color: #dc2626; }
   .chip.cancelled { background: #6b728033; color: #4b5563; }
+  /* Not a fulfilment state — a product that is off the storefront. Outlined
+     rather than filled, so it reads as a note on the row it sits in rather
+     than competing with the order chips above. */
+  .chip.off-storefront { margin-left: 8px; border: 1px solid var(--dot); color: var(--secondary);
+    font-weight: 500; white-space: nowrap; }
   dialog { border: 1px solid var(--hairline); border-radius: 8px; padding: 20px; max-width: 36rem; width: 90%; background: var(--paper); color: var(--ink); }
   dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-  .dialog-close { float: right; margin-top: -6px; font-size: 20px; border: none; background: none; cursor: pointer; color: inherit; }
+  /* No longer floated — see .dialog-top, which lays it out beside the title
+     instead of taking a blank line above it. */
+  .dialog-close { display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; min-height: 40px; padding: 0; font-size: 22px;
+    border: none; background: none; cursor: pointer; color: var(--secondary); }
+  .dialog-close:hover { color: var(--ink); }
   .timeline { list-style: none; padding: 0; margin: 12px 0; }
   .timeline li { padding: 6px 0; border-bottom: 1px solid var(--hairline); font-size: 13px; }
   .inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
@@ -315,6 +452,53 @@ const css = `
   .new-variant-chip { border-style: dashed; border-color: var(--ink); background: var(--shot); }
   .new-variant-options-inputs { display: inline-flex; align-items: center; gap: 4px; }
 
+  /*
+    Variants & stock on a phone.
+
+    These are chips: each one sizes to its own label, which on a wide screen
+    puts three or four on a line and reads well. On a 390px phone each chip is
+    *nearly* the full measure and none of them reach it, so the section became
+    a ragged staircase — "Ecru / M" stopping 145px short of the edge, "Deep
+    Indigo / XL" stopping 88px short — with the stock box a 50px cell somewhere
+    in the middle of the gap. The measured widths were 217, 225, 229 and 274 in
+    a 362px column.
+
+    So below the breakpoint they stop being chips and become rows: one per
+    line, full width, the label taking up the slack and the stock box against
+    the right edge where the eye can run down the column of numbers. The
+    inputs also get real widths — the axis and value boxes were 75px, which
+    truncated their own placeholders to "Axis (e" and "Value (e.g".
+  */
+  @media (max-width: 640px) {
+    .admin-variant-options { flex-direction: column; align-items: stretch; }
+    .admin-variant-chip { width: 100%; }
+    /* min-width: 0 or a long label refuses to shrink and pushes the stock box
+       back off the edge, which is the bug all over again. */
+    .variant-chip-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    .variant-qty-wrapper { flex: 0 0 auto; }
+    .variant-qty-input { width: 4.5rem; }
+    /* The divider earns its keep between chips on one line; between a label
+       and the right edge of its own row it is just a dot in the gap. */
+    .admin-variant-chip .variant-divider { display: none; }
+
+    /* The add-variant row wraps: the two text boxes take the first line and
+       share it, the stock box and cancel take the second. Both boxes fitting
+       on one line with the stock box leaves each about 90px, which is not
+       enough for what they are asking for. */
+    .new-variant-chip { flex-wrap: wrap; }
+    /* min-width: 0 on the wrapper as well as on the inputs. A flex item
+       defaults to min-width: auto, so this div refused to shrink below the
+       min-content width of the two boxes inside it and pushed 11px of
+       horizontal scroll onto the whole document. */
+    .new-variant-options-inputs { display: flex; flex: 1 1 100%; gap: 6px; min-width: 0; }
+    .variant-axis-input, .variant-val-input { flex: 1 1 0; width: auto; min-width: 0; }
+
+    /* The section's primary action, so it takes the measure rather than
+       sitting thumb-sized against the left edge under a column of full-width
+       rows. */
+    .add-variant-btn { width: 100%; justify-content: center; }
+  }
+
   .btn { display: inline-flex; align-items: center; justify-content: center; padding: 14px 24px;
     background: var(--ink); color: var(--paper); border: 1px solid var(--ink); border-radius: 2px;
     font: 500 13px/1 system-ui, -apple-system, sans-serif; letter-spacing: 0.12em; text-transform: uppercase;
@@ -323,6 +507,21 @@ const css = `
   .btn.secondary { background: transparent; color: var(--ink); border-color: var(--hairline); }
   .btn.secondary:hover { border-color: var(--ink); }
 
+  /*
+    Taking a product off the storefront, at the foot of its editor. Its own
+    form outside the Save Changes one above (forms do not nest, and this is not
+    a thing to do as a side effect of fixing a typo), so it needs its own
+    separation rather than inheriting the footer's.
+  */
+  .storefront-state { display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: 12px 16px; max-width: none; width: 100%;
+    margin: 22px 0 0; padding-top: 16px; border-top: 1px solid var(--hairline); }
+  .storefront-state > div { flex: 1 1 16rem; min-width: 0; }
+  .storefront-state-copy { margin: 2px 0 0; font-size: 13px; color: var(--secondary); }
+  /* The button sizes to its label here rather than spanning the measure the
+     way .btn does inside the editor's single-column form. */
+  .storefront-state .btn { width: auto; flex: 0 0 auto; }
+
   .admin-detail-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
     gap: 12px; margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--hairline); }
   .admin-detail-footer a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 1px;
@@ -330,9 +529,59 @@ const css = `
 
   @media (max-width: 640px) {
     main { padding: 16px 14px; }
-    header { padding: 12px 14px; }
+    .chrome { padding: 12px 14px; }
     .row { grid-template-columns: 1fr; }
     .row .span { grid-column: auto; }
+  }
+
+  /*
+    The admin chrome on a phone.
+
+    Six destinations at a 44px touch target do not fit across 360px, so
+    flex-wrap was stacking them three rows deep — over 130px of navigation
+    above every page, on the device ADR-0003 says this panel is actually used
+    on. Worse, .out's \`margin-left: auto\` only pushes Storefront to the right
+    on a line it shares with something, so once wrapped it landed under
+    Overview looking like a fourth section rather than the way out.
+
+    So on a phone the bar becomes one scrolling row: the wordmark on its own
+    line, the sections in a strip under it that swipes horizontally. One row of
+    chrome, every destination still reachable, and no menu button to build —
+    a scroll strip needs no script, no ARIA and no open/closed state to get
+    wrong, which is the whole reason to prefer it to a hamburger here.
+  */
+  @media (max-width: 640px) {
+    .chrome { display: block; padding: 10px 0 0; }
+    .chrome .wm { display: block; padding: 0 14px 8px; }
+    .chrome nav {
+      flex-wrap: nowrap;
+      gap: 0 18px;
+      overflow-x: auto;
+      /* Momentum on iOS, and no rubber-banding of the page behind it. */
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+      /* The strip runs to both edges, so the first and last items can be
+         scrolled fully clear of the screen edge rather than sitting under it. */
+      padding: 0 14px;
+      /* Room for the current-section underline, which is otherwise clipped by
+         the scroll container. */
+      padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+    .chrome nav::-webkit-scrollbar { display: none; }
+    .chrome nav a {
+      /* Without this a long label wraps to two lines inside the strip and
+         every item grows to match it. */
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+    /* Undone: in a scroll container this would push Storefront a screen-width
+       away from the item before it, leaving the strip apparently empty. */
+    .chrome nav a.out { margin-left: 0; }
+    /* The badge is the one thing on the strip that must not be swiped past
+       unseen, so it keeps its own contrast rather than the hairline it has on
+       a desktop where it sits still. */
+    .chrome nav .badge { background: var(--strip); color: var(--strip-ink); }
   }
 
   /*
@@ -348,7 +597,7 @@ const css = `
   */
   input, textarea, select, button { font-size: 16px; min-height: 44px; padding: 10px; }
   button { padding: 10px 16px; }
-  header nav a { display: inline-flex; align-items: center; min-height: 44px; }
+  .chrome nav a { display: inline-flex; align-items: center; min-height: 44px; }
   .back { display: inline-flex; align-items: center; min-height: 44px; }
   .cards h2 a { display: inline-flex; align-items: center; min-height: 44px; }
   /* The row is 44px but the link inside it was only its own line box, so it

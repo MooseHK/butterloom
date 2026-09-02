@@ -198,7 +198,11 @@ function listing(c: Context, basePath: string, category: Category | null) {
   // every distinct `?q=` a visitor can type is a junk URL in Google's index,
   // and Google says so outright. `follow`, not `nofollow`: the products linked
   // from it are exactly as worth crawling as ever.
-  const landing = searching && search === ''
+  const noindex = searching && isSearching(params)
+  // The bare /search landing has nothing to list yet, so it offers a way in
+  // rather than an empty grid — the same tiles the front page draws.
+  const landing = searching && !isSearching(params)
+  const shelves = landing ? listCategories().filter((shelf) => shelf.productCount > 0) : []
 
   return c.html(
     <StorefrontLayout
@@ -446,7 +450,7 @@ storefront.get('/recently-viewed', (c) => {
 storefront.get('/p/:slug', (c) => {
   const detail = findProductBySlug(c.req.param('slug'))
   if (!detail) return c.notFound()
-  const { product, images, variants } = detail
+  const { product, images, variants, category } = detail
 
   // Main's rule, on the variant table rather than the stock table it was
   // written against: a lone unnamed configuration is not a choice to offer.
@@ -462,9 +466,22 @@ storefront.get('/p/:slug', (c) => {
       <main>
         {/* The wordmark goes home, but it reads as a logo. This says it in
             words, at the top of the one page a visitor arrives on from a
-            search result with no idea what is above it. */}
+            search result with no idea what is above it.
+
+            The shelf is the second step, and the one that matters most on this
+            page: somebody who landed here from a search and likes what they
+            see wants the other sarees, and until now the only way up was the
+            whole collection. Same shape as the crumbs on a listing page, so
+            the two read as one trail. Omitted for an unshelved product rather
+            than shown dead — there is no page for "no shelf". */}
         <nav class="crumbs" aria-label="Breadcrumb">
           <a href="/">The collection</a>
+          {category ? (
+            <>
+              <i class="dot" />
+              <a href={`/c/${category.slug}`}>{category.name}</a>
+            </>
+          ) : null}
         </nav>
         <Shots images={images} />
         <div class="detail">
@@ -509,6 +526,16 @@ storefront.get('/p/:slug', (c) => {
             <button type="submit" class="btn" id="add-to-cart-btn">
               Add to cart
             </button>
+            {/*
+              Empty in the bytes the CDN caches, and it has to stay that way for
+              the same reason the recently-viewed rail below does: this document
+              is served from the Dhaka PoP, so anything rendered here would be
+              handed to the next shopper. The script above fills it from the
+              reply to its own POST, which is per-shopper and uncached — which is
+              precisely how a page that may not assert availability can still
+              tell one person that this piece is sold out.
+            */}
+            <p class="buy-msg" id="add-to-cart-msg" role="alert" hidden />
           </form>
 
           {/*
@@ -539,19 +566,38 @@ storefront.get('/p/:slug', (c) => {
           __html: `
             var form = document.getElementById('add-to-cart-form');
             var btn = document.getElementById('add-to-cart-btn');
+            var say = document.getElementById('add-to-cart-msg');
             if (form && btn) {
               form.addEventListener('submit', function(e) {
                 e.preventDefault();
                 var prevText = btn.textContent;
                 btn.disabled = true;
                 btn.textContent = 'Adding…';
+                if (say) { say.hidden = true; say.textContent = ''; }
                 fetch('/cart/add', {
                   method: 'POST',
                   body: new FormData(form),
                   headers: { 'Accept': 'application/json' }
                 })
+                /* The body is read whatever the status is: a refusal carries
+                   the reason to print, and it is the only place that reason
+                   exists — this page is edge-cached and cannot say a word
+                   about stock on its own. */
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
+                  if (!data || data.ok !== true) {
+                    /* Not "Added to cart ✓". The old script said that on
+                       every reply it got, including the ones that were a
+                       refusal, which is how adding a sold-out piece came to
+                       look like it had worked. */
+                    if (say) {
+                      say.textContent = (data && data.error) || 'Could not add this to your cart.';
+                      say.hidden = false;
+                    }
+                    btn.disabled = false;
+                    btn.textContent = prevText;
+                    return;
+                  }
                   btn.textContent = 'Added to cart ✓';
                   var badge = document.getElementById('cart-badge');
                   if (badge && data.count) {

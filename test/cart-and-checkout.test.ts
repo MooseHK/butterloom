@@ -107,6 +107,132 @@ test('cart add via json request returns json with updated count', async () => {
   assert.ok(json.count >= 1)
 })
 
+/**
+ * Adding something sold out used to 303 to /cart with no message, which from
+ * the shopper's side is indistinguishable from success: the page becomes the
+ * cart, and the thing is not in it. Both paths have to say why — the product
+ * page's fetch reads the reason out of the body, and the no-script post reads
+ * it off /cart.
+ */
+test('adding a sold-out piece is refused, and says so on both paths', async () => {
+  const app = buildTestApp()
+  const { product, stock } = seedProduct(`gone-${Date.now()}`, 'Sold Out Saree', 90000, 0)
+
+  const form = new FormData()
+  form.set('product_id', String(product.id))
+  form.set('variant_id', String(stock.id))
+  form.set('quantity', '1')
+
+  const asJson = await app.request('/cart/add', {
+    method: 'POST',
+    body: form,
+    headers: { Accept: 'application/json' },
+  })
+  assert.equal(asJson.status, 409)
+  const body = (await asJson.json()) as { ok: boolean; error: string }
+  assert.equal(body.ok, false)
+  assert.match(body.error, /out of stock/i)
+
+  // Nothing was added behind the refusal.
+  const lines = db.select().from(cartItems).where(eq(cartItems.variantId, stock.id)).all()
+  assert.equal(lines.length, 0)
+
+  const plainForm = new FormData()
+  plainForm.set('product_id', String(product.id))
+  plainForm.set('variant_id', String(stock.id))
+  const plain = await app.request('/cart/add', { method: 'POST', body: plainForm })
+  assert.equal(plain.status, 303)
+  const location = plain.headers.get('Location') ?? ''
+  // The reason travels on the redirect and is rendered where it lands, rather
+  // than the shopper arriving at a cart that silently did not change.
+  const landed = await app.request(location)
+  assert.equal(landed.status, 200)
+  assert.match(await landed.text(), /out of stock/i)
+})
+
+/**
+ * The named variant is what is checked, not the product: a saree in stock in
+ * medium and sold out in large must refuse the large.
+ */
+test('a sold-out variant is refused while its siblings still sell', async () => {
+  const app = buildTestApp()
+  const { product } = seedProduct(`mixed-${Date.now()}`, 'Mixed Stock Saree', 70000, 4)
+  const [soldOut] = db
+    .insert(productVariants)
+    .values({ productId: product.id, label: 'L', stockQty: 0 })
+    .returning()
+    .all()
+  const [inStock] = db
+    .insert(productVariants)
+    .values({ productId: product.id, label: 'M', stockQty: 3 })
+    .returning()
+    .all()
+
+  const bad = new FormData()
+  bad.set('product_id', String(product.id))
+  bad.set('variant_id', String(soldOut!.id))
+  const refused = await app.request('/cart/add', {
+    method: 'POST',
+    body: bad,
+    headers: { Accept: 'application/json' },
+  })
+  assert.equal(refused.status, 409)
+  // The label is in the message: "out of stock" alone reads as the whole
+  // product when the shopper can see three other sizes offered.
+  assert.match(((await refused.json()) as { error: string }).error, /L/)
+
+  const good = new FormData()
+  good.set('product_id', String(product.id))
+  good.set('variant_id', String(inStock!.id))
+  const accepted = await app.request('/cart/add', {
+    method: 'POST',
+    body: good,
+    headers: { Accept: 'application/json' },
+  })
+  assert.equal(accepted.status, 200)
+  assert.equal(((await accepted.json()) as { ok: boolean }).ok, true)
+})
+
+/**
+ * Adding four of something with three on the shelf is a line checkout would
+ * only refuse later, after the address form. The cap is applied on the way in.
+ */
+test('a cart line cannot be built past what is in stock', async () => {
+  const app = buildTestApp()
+  const { product, stock } = seedProduct(`capped-${Date.now()}`, 'Capped Saree', 60000, 2)
+
+  const form = new FormData()
+  form.set('product_id', String(product.id))
+  form.set('variant_id', String(stock.id))
+  form.set('quantity', '9')
+  const res = await app.request('/cart/add', {
+    method: 'POST',
+    body: form,
+    headers: { Accept: 'application/json' },
+  })
+  assert.equal(res.status, 200)
+  // The session cookie has to travel, or the second add below is a different
+  // visitor with an empty cart and the cap is never reached.
+  const cookie = res.headers.get('Set-Cookie') ?? ''
+  assert.match(cookie, /bl_session=/)
+
+  const [line] = db.select().from(cartItems).where(eq(cartItems.variantId, stock.id)).all()
+  assert.equal(line?.quantity, 2, 'nine asked for, two on the shelf')
+
+  // And adding again, with the cart already holding all of them, is told so
+  // rather than silently doing nothing.
+  const again = new FormData()
+  again.set('product_id', String(product.id))
+  again.set('variant_id', String(stock.id))
+  const repeat = await app.request('/cart/add', {
+    method: 'POST',
+    body: again,
+    headers: { Accept: 'application/json', Cookie: cookie },
+  })
+  assert.equal(repeat.status, 409)
+  assert.match(((await repeat.json()) as { error: string }).error, /already in your cart/i)
+})
+
 test('cart update and remove modify quantities', async () => {
   const app = buildTestApp()
   const { product, stock } = seedProduct(`kurti-${Date.now()}`, 'Cotton Kurti', 120000, 10)
@@ -174,7 +300,8 @@ test('checkout validates required fields and blocks invalid submit', async () =>
   const badForm = new FormData()
   badForm.set('customer_name', 'Tasnim Ali')
   badForm.set('customer_phone', '01812345678')
-  badForm.set('delivery_address', '') // empty
+  // Address parts left out entirely — the browser's own `required` catches
+  // this in a real submit, so this is the hand-posted case.
 
   const res = await app.request('/checkout', {
     method: 'POST',
@@ -184,6 +311,54 @@ test('checkout validates required fields and blocks invalid submit', async () =>
 
   assert.equal(res.status, 303)
   assert.match(res.headers.get('Location') ?? '', /\/checkout\?error=/)
+  // Named, not counted: the customer is told which parts to go back and add.
+  const reason = decodeURIComponent(
+    (res.headers.get('Location') ?? '').replace('/checkout?error=', ''),
+  )
+  assert.equal(reason, 'Please add house and road, area or thana and city or district.')
+
+  // Nothing was ordered behind the refusal.
+  const placed = db.select().from(orders).where(eq(orders.customerName, 'Tasnim Ali')).all()
+  assert.equal(placed.length, 0)
+})
+
+/**
+ * The one field that is genuinely optional. A customer who does not know their
+ * postcode must still be able to order — plenty do not.
+ */
+test('an order places without a postcode', async () => {
+  const app = buildTestApp()
+  const { product, stock } = seedProduct(`nopc-${Date.now()}`, 'No Postcode Saree', 90000, 3)
+
+  const addForm = new FormData()
+  addForm.set('product_id', String(product.id))
+  addForm.set('variant_id', String(stock.id))
+  const addRes = await app.request('/cart/add', { method: 'POST', body: addForm })
+  const cookie = addRes.headers.get('Set-Cookie')!
+
+  const checkout = new FormData()
+  checkout.set('customer_name', 'Korom Ali')
+  checkout.set('customer_phone', '01711111111')
+  checkout.set('address_line', 'House 7, Road 3')
+  checkout.set('address_area', 'Uttara Sector 4')
+  checkout.set('address_city', 'Dhaka')
+
+  const res = await app.request('/checkout', {
+    method: 'POST',
+    body: checkout,
+    headers: { Cookie: cookie },
+  })
+  assert.equal(res.status, 303)
+  const location = res.headers.get('Location') ?? ''
+  assert.match(location, /\/order\/\d+/)
+
+  const [order] = db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, Number(location.replace('/order/', ''))))
+    .all()
+  // No trailing space where the postcode would have gone.
+  assert.equal(order?.deliveryAddress, 'House 7, Road 3\nUttara Sector 4\nDhaka')
 })
 
 test('checkout verifies stock, decrements atomically, creates order and clears cart', async () => {
@@ -208,7 +383,10 @@ test('checkout verifies stock, decrements atomically, creates order and clears c
   const checkoutForm = new FormData()
   checkoutForm.set('customer_name', 'Maksuda Begum')
   checkoutForm.set('customer_phone', '01912345678')
-  checkoutForm.set('delivery_address', 'Flat 4B, Road 12, Banani, Dhaka')
+  checkoutForm.set('address_line', 'Flat 4B, Road 12')
+  checkoutForm.set('address_area', 'Banani')
+  checkoutForm.set('address_city', 'Dhaka')
+  checkoutForm.set('address_postcode', '1213')
   checkoutForm.set('delivery_notes', 'Call before arrival')
 
   const res = await app.request('/checkout', {
@@ -227,7 +405,8 @@ test('checkout verifies stock, decrements atomically, creates order and clears c
   assert.ok(order)
   assert.equal(order.customerName, 'Maksuda Begum')
   assert.equal(order.customerPhone, '01912345678')
-  assert.equal(order.deliveryAddress, 'Flat 4B, Road 12, Banani, Dhaka')
+  // Composed from the parts, one line each, postcode after the city.
+  assert.equal(order.deliveryAddress, 'Flat 4B, Road 12\nBanani\nDhaka 1213')
   assert.equal(order.deliveryNotes, 'Call before arrival')
   assert.equal(order.totalPaisa, 400000 * 3)
   assert.equal(order.fulfilmentState, 'placed')

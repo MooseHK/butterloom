@@ -1,5 +1,6 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { db } from '../db/client.js'
 import { cartItems, productVariants, products } from '../db/schema.js'
 import { formatPaisa } from '../lib/money.js'
@@ -22,6 +23,11 @@ cartRoutes.get('/', (c) => {
   const session = getSession(c)
   const items = session ? getCartItemsForSession(session.id) : []
   const cartCount = session ? getCartItemCount(c) : 0
+  // Where a no-script add-to-cart puts its refusal. Capped and rendered as a
+  // child rather than raw, so the query string cannot write markup into the
+  // page — it is echoed back to whoever typed it, which is the definition of
+  // reflected XSS if it were ever trusted.
+  const error = (c.req.query('error') ?? '').slice(0, 200)
 
   const totalPaisa = items.reduce(
     (sum, item) => sum + item.product.pricePaisa * item.cartItem.quantity,
@@ -31,6 +37,12 @@ cartRoutes.get('/', (c) => {
   return c.html(
     <StorefrontLayout title="Your cart — butterloom" canonicalPath="/cart" cartCount={cartCount}>
       <main>
+        {error ? (
+          <p class="cart-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+
         <div class="head">
           <nav class="crumbs" aria-label="Breadcrumb">
             <a href="/">Keep looking</a>
@@ -155,12 +167,35 @@ cartRoutes.get('/', (c) => {
   )
 })
 
+/**
+ * Why every failure below answers rather than redirecting to /cart.
+ *
+ * This endpoint used to send every refusal to /cart with no message, so the one
+ * case a shopper actually hits — adding something that is sold out — looked
+ * exactly like success: the page changed to the cart, and the cart did not have
+ * the thing in it. A shopper cannot tell "sold out" from "the button is broken"
+ * from that, and neither could the operator they then telephoned.
+ *
+ * The product page posts this with `Accept: application/json` and stays put, so
+ * the honest answer for that path is a status and a reason it can print next to
+ * the button. The no-script path gets the same reason as a notice on /cart,
+ * because there is nowhere else to put it: the product page is edge-cached
+ * (ADR-0007) and cannot be re-rendered with a per-shopper message on it.
+ */
+function refuse(c: Context, status: 400 | 404 | 409, reason: string) {
+  const wantsJson =
+    c.req.header('accept')?.includes('application/json') ||
+    c.req.header('x-requested-with') === 'XMLHttpRequest'
+  if (wantsJson) return c.json({ ok: false, error: reason }, status)
+  return c.redirect(`/cart?error=${encodeURIComponent(reason)}`, 303)
+}
+
 cartRoutes.post('/add', async (c) => {
   let form: FormData
   try {
     form = await c.req.formData()
   } catch {
-    return c.redirect('/cart', 303)
+    return refuse(c, 400, 'That did not come through. Please try again.')
   }
 
   const productId = Number(form.get('product_id'))
@@ -168,7 +203,20 @@ cartRoutes.post('/add', async (c) => {
   const quantity = Math.max(1, Math.min(10, Number(form.get('quantity') ?? 1)))
 
   if (!productId || Number.isNaN(productId)) {
-    return c.redirect('/cart', 303)
+    return refuse(c, 400, 'That did not come through. Please try again.')
+  }
+
+  // Checked before the variant, and checked here rather than trusted to the
+  // page the form came off: that page is edge-cached, so it can be served from
+  // the Dhaka PoP for as long as its TTL runs after the product was withdrawn.
+  // The cached page is allowed to be stale; the order it produces is not.
+  const [onSale] = db
+    .select({ id: products.id })
+    .from(products)
+    .where(and(eq(products.id, productId), isNull(products.hiddenAt)))
+    .all()
+  if (!onSale) {
+    return refuse(c, 404, 'Sorry — this piece is no longer available.')
   }
 
   // The variant is looked up rather than trusted, and looked up *within this
@@ -191,9 +239,24 @@ cartRoutes.post('/add', async (c) => {
     .all()
 
   if (!variant) {
-    return c.redirect('/cart', 303)
+    return refuse(c, 404, 'Sorry — this piece is no longer available.')
   }
   const variantId = variant.id
+
+  // The check this endpoint never had. ADR-0007 keeps availability off the
+  // cached product page and resolves it "at placement", and checkout does hold
+  // that line — but letting a sold-out piece into the cart only moves the
+  // refusal to the end of the checkout form, after the shopper has typed their
+  // address. Saying it at the button is the same promise kept earlier.
+  //
+  // Not a reservation: two shoppers can both pass this on the last one, and
+  // checkout's transaction is still what decides. This is a courtesy, and the
+  // wording keeps it one — it says what is true now, not what will be true when
+  // they check out.
+  if (variant.stockQty < 1) {
+    const which = variant.label === 'Standard' ? 'This piece' : `“${variant.label}”`
+    return refuse(c, 409, `${which} is out of stock.`)
+  }
 
   const session = getOrCreateSession(c)
 
@@ -204,7 +267,16 @@ cartRoutes.post('/add', async (c) => {
     .all()
 
   if (existing) {
-    const newQty = Math.min(10, existing.quantity + quantity)
+    // Capped at what is actually on the shelf as well as at ten, so adding the
+    // same piece four times cannot build a line the checkout will refuse.
+    const newQty = Math.min(10, variant.stockQty, existing.quantity + quantity)
+    if (newQty === existing.quantity) {
+      return refuse(
+        c,
+        409,
+        `Only ${variant.stockQty} of ${variant.label === 'Standard' ? 'this piece' : `“${variant.label}”`} ${variant.stockQty === 1 ? 'is' : 'are'} available, and ${variant.stockQty === 1 ? 'it is' : 'they are'} already in your cart.`,
+      )
+    }
     db.update(cartItems)
       .set({ quantity: newQty })
       .where(eq(cartItems.id, existing.id))
@@ -215,7 +287,9 @@ cartRoutes.post('/add', async (c) => {
         sessionId: session.id,
         productId,
         variantId,
-        quantity,
+        // Same cap as the branch above: a hand-posted quantity of ten against
+        // three in stock is a line checkout would only refuse later.
+        quantity: Math.min(quantity, variant.stockQty),
       })
       .run()
   }
@@ -230,7 +304,6 @@ cartRoutes.post('/add', async (c) => {
     const totalCount = getCartItemCount(c, session)
     return c.json({ ok: true, count: totalCount })
   }
-
 
   return c.redirect('/cart', 303)
 })
