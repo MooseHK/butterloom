@@ -19,7 +19,9 @@ export const adminCategories = new Hono()
 const maxNameLength = 60
 
 adminCategories.get('/', (c) => {
-  const rows = listCategories()
+  // Everything standing on the shelf, withdrawn products included: this is the
+  // screen for managing the shelf, not the storefront's tile.
+  const rows = listCategories({ includeHidden: true })
   const error = c.req.query('error')
   const saved = c.req.query('saved')
 

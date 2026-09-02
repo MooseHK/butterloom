@@ -55,11 +55,35 @@ export const products = sqliteTable(
      * delete what was standing on it.
      */
     categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
+    /**
+     * When the operator took this product off the storefront, or null while it
+     * is on it.
+     *
+     * Deliberately *not* called unshelved. A null category_id above is already
+     * "unshelved" and that state stays on the storefront — listed under All
+     * items, reachable at its own URL, only sitting on no shelf. This is the
+     * other thing an operator means by taking something down: gone from every
+     * listing, gone from search, gone from the facets, and a 404 at its own
+     * URL. Two names for two states, because the admin prints both and one word
+     * covering both would be unreadable in the one place it matters.
+     *
+     * A timestamp rather than a flag: "off the storefront since Tuesday" is
+     * what an operator actually wants to read next to a product that stopped
+     * selling, and it costs the same column as a boolean would.
+     *
+     * Withdrawing is not deleting. The row, its photographs, its variants and
+     * every order line that ever named it are untouched — which is the point,
+     * because a product comes back the day the next batch arrives.
+     */
+    hiddenAt: integer('hidden_at'),
     createdAt: integer('created_at').notNull().default(now),
   },
   (t) => [
     uniqueIndex('products_slug_idx').on(t.slug),
     index('products_category_idx').on(t.categoryId),
+    // Every storefront read filters on this, and all but the admin's own list
+    // filter on nothing else, so it earns an index of its own.
+    index('products_hidden_idx').on(t.hiddenAt),
     // Both listing sorts read this: price ascending and descending are the same
     // index walked in either direction.
     index('products_price_idx').on(t.pricePaisa),

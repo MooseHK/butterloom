@@ -107,6 +107,132 @@ test('cart add via json request returns json with updated count', async () => {
   assert.ok(json.count >= 1)
 })
 
+/**
+ * Adding something sold out used to 303 to /cart with no message, which from
+ * the shopper's side is indistinguishable from success: the page becomes the
+ * cart, and the thing is not in it. Both paths have to say why — the product
+ * page's fetch reads the reason out of the body, and the no-script post reads
+ * it off /cart.
+ */
+test('adding a sold-out piece is refused, and says so on both paths', async () => {
+  const app = buildTestApp()
+  const { product, stock } = seedProduct(`gone-${Date.now()}`, 'Sold Out Saree', 90000, 0)
+
+  const form = new FormData()
+  form.set('product_id', String(product.id))
+  form.set('variant_id', String(stock.id))
+  form.set('quantity', '1')
+
+  const asJson = await app.request('/cart/add', {
+    method: 'POST',
+    body: form,
+    headers: { Accept: 'application/json' },
+  })
+  assert.equal(asJson.status, 409)
+  const body = (await asJson.json()) as { ok: boolean; error: string }
+  assert.equal(body.ok, false)
+  assert.match(body.error, /out of stock/i)
+
+  // Nothing was added behind the refusal.
+  const lines = db.select().from(cartItems).where(eq(cartItems.variantId, stock.id)).all()
+  assert.equal(lines.length, 0)
+
+  const plainForm = new FormData()
+  plainForm.set('product_id', String(product.id))
+  plainForm.set('variant_id', String(stock.id))
+  const plain = await app.request('/cart/add', { method: 'POST', body: plainForm })
+  assert.equal(plain.status, 303)
+  const location = plain.headers.get('Location') ?? ''
+  // The reason travels on the redirect and is rendered where it lands, rather
+  // than the shopper arriving at a cart that silently did not change.
+  const landed = await app.request(location)
+  assert.equal(landed.status, 200)
+  assert.match(await landed.text(), /out of stock/i)
+})
+
+/**
+ * The named variant is what is checked, not the product: a saree in stock in
+ * medium and sold out in large must refuse the large.
+ */
+test('a sold-out variant is refused while its siblings still sell', async () => {
+  const app = buildTestApp()
+  const { product } = seedProduct(`mixed-${Date.now()}`, 'Mixed Stock Saree', 70000, 4)
+  const [soldOut] = db
+    .insert(productVariants)
+    .values({ productId: product.id, label: 'L', stockQty: 0 })
+    .returning()
+    .all()
+  const [inStock] = db
+    .insert(productVariants)
+    .values({ productId: product.id, label: 'M', stockQty: 3 })
+    .returning()
+    .all()
+
+  const bad = new FormData()
+  bad.set('product_id', String(product.id))
+  bad.set('variant_id', String(soldOut!.id))
+  const refused = await app.request('/cart/add', {
+    method: 'POST',
+    body: bad,
+    headers: { Accept: 'application/json' },
+  })
+  assert.equal(refused.status, 409)
+  // The label is in the message: "out of stock" alone reads as the whole
+  // product when the shopper can see three other sizes offered.
+  assert.match(((await refused.json()) as { error: string }).error, /L/)
+
+  const good = new FormData()
+  good.set('product_id', String(product.id))
+  good.set('variant_id', String(inStock!.id))
+  const accepted = await app.request('/cart/add', {
+    method: 'POST',
+    body: good,
+    headers: { Accept: 'application/json' },
+  })
+  assert.equal(accepted.status, 200)
+  assert.equal(((await accepted.json()) as { ok: boolean }).ok, true)
+})
+
+/**
+ * Adding four of something with three on the shelf is a line checkout would
+ * only refuse later, after the address form. The cap is applied on the way in.
+ */
+test('a cart line cannot be built past what is in stock', async () => {
+  const app = buildTestApp()
+  const { product, stock } = seedProduct(`capped-${Date.now()}`, 'Capped Saree', 60000, 2)
+
+  const form = new FormData()
+  form.set('product_id', String(product.id))
+  form.set('variant_id', String(stock.id))
+  form.set('quantity', '9')
+  const res = await app.request('/cart/add', {
+    method: 'POST',
+    body: form,
+    headers: { Accept: 'application/json' },
+  })
+  assert.equal(res.status, 200)
+  // The session cookie has to travel, or the second add below is a different
+  // visitor with an empty cart and the cap is never reached.
+  const cookie = res.headers.get('Set-Cookie') ?? ''
+  assert.match(cookie, /bl_session=/)
+
+  const [line] = db.select().from(cartItems).where(eq(cartItems.variantId, stock.id)).all()
+  assert.equal(line?.quantity, 2, 'nine asked for, two on the shelf')
+
+  // And adding again, with the cart already holding all of them, is told so
+  // rather than silently doing nothing.
+  const again = new FormData()
+  again.set('product_id', String(product.id))
+  again.set('variant_id', String(stock.id))
+  const repeat = await app.request('/cart/add', {
+    method: 'POST',
+    body: again,
+    headers: { Accept: 'application/json', Cookie: cookie },
+  })
+  assert.equal(repeat.status, 409)
+  assert.match(((await repeat.json()) as { error: string }).error, /already in your cart/i)
+})
+
 test('cart update and remove modify quantities', async () => {
   const app = buildTestApp()
   const { product, stock } = seedProduct(`kurti-${Date.now()}`, 'Cotton Kurti', 120000, 10)

@@ -521,6 +521,19 @@ const css = `
   .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
 
   .buy { margin: 14px 0 6px; }
+  /*
+    What the shop says when it cannot sell you something — a sold-out variant,
+    a piece withdrawn while the cached page was still being served. Stated in
+    the ink colour on the paper rather than in alarm red: nothing has gone
+    wrong, the answer is simply no.
+  */
+  .buy-msg { margin: 10px 0 0; padding: 10px 12px; font-size: 14px;
+    border: 1px solid var(--hairline); border-left: 2px solid var(--ink);
+    background: var(--shot); color: var(--ink); }
+  /* The same message on /cart, where a no-script add-to-cart lands. */
+  .cart-error { margin: 0 0 18px; padding: 12px 14px; font-size: 14px;
+    border: 1px solid var(--hairline); border-left: 2px solid var(--ink);
+    background: var(--shot); color: var(--ink); }
   /* Variants. A fieldset, so the radios are one named group to a screen reader
      rather than four unrelated controls — but laid out as plain blocks: a
      legend inside a flex container is rendered by its own rules and lands in

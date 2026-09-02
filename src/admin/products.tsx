@@ -20,6 +20,7 @@ import {
   queueHasRoomFor,
   queueProductImage,
 } from '../images/queue.js'
+import { formatDay } from '../lib/date.js'
 import { formatPaisa } from '../lib/money.js'
 import {
   derivativesFor,
@@ -190,7 +191,7 @@ adminProducts.get('/', (c) => {
       ),
   )
   const pending = pendingByProduct()
-  const shelves = listCategories().map((c) => c.category)
+  const shelves = listCategories({ includeHidden: true }).map((c) => c.category)
   const shelfNames = new Map(shelves.map((c) => [c.id, c.name] as const))
   const variants = variantCounts(rows.map((p) => p.id))
   const error = c.req.query('error')
@@ -274,10 +275,20 @@ adminProducts.get('/', (c) => {
               // finds the products that have no shelf rather than nothing.
               const shelf =
                 p.categoryId === null ? 'Unshelved' : (shelfNames.get(p.categoryId) ?? 'Unshelved')
+              // Withdrawn is searchable by the word on the row for the same
+              // reason the shelf name is — and "off storefront" as well as
+              // "withdrawn", because an operator will try either.
+              const off = p.hiddenAt !== null
               return (
-                <tr data-search={`${p.title} ${p.slug} ${shelf}`.toLowerCase()}>
+                <tr
+                  data-search={`${p.title} ${p.slug} ${shelf}${off ? ' withdrawn off storefront' : ''}`.toLowerCase()}
+                >
                   <td>
                     <a href={`/admin/products/${p.id}`}>{p.title}</a>
+                    {/* The one column an operator scans, so the fact that a
+                        product is not for sale belongs here rather than in a
+                        column of its own off the right edge of a phone. */}
+                    {off ? <span class="chip off-storefront">Off storefront</span> : null}
                   </td>
                   <td>
                     {p.categoryId === null || !shelfNames.has(p.categoryId) ? (
@@ -504,13 +515,15 @@ adminProducts.get('/:id', (c) => {
   // same shape, and it sorts each ladder by width where this page did not.
   const byImage = derivativesFor(images)
   const waiting = pendingForProduct(id)
-  const shelves = listCategories().map((r) => r.category)
+  const shelves = listCategories({ includeHidden: true }).map((r) => r.category)
   const variants = variantsForProduct(id)
   // The axes already in use anywhere in the catalogue, not just on this product:
   // the point of the datalist is to offer the spelling that exists before a
   // second one is typed.
-  const axisNames = facetsFor(null).map((f) => f.name)
+  const axisNames = facetsFor(null, { includeHidden: true }).map((f) => f.name)
   const totalStock = variants.reduce((acc, v) => acc + v.variant.stockQty, 0)
+  const offStorefront = product.hiddenAt !== null
+  const withdrawnOn = product.hiddenAt === null ? null : formatDay(product.hiddenAt)
 
   const error = c.req.query('error')
   const uploaded = Number(c.req.query('uploaded') ?? 0)
@@ -833,10 +846,43 @@ adminProducts.get('/:id', (c) => {
               <span class="muted">
                 Slug: <code>/p/{product.slug}</code>
               </span>
-              <a href={`/p/${product.slug}`} target="_blank" rel="noopener">
-                View on storefront ↗
-              </a>
+              {/* A withdrawn product's own URL is a 404, so this stops
+                  offering a link that goes nowhere and says why. */}
+              {offStorefront ? (
+                <span class="muted">Not on the storefront</span>
+              ) : (
+                <a href={`/p/${product.slug}`} target="_blank" rel="noopener">
+                  View on storefront ↗
+                </a>
+              )}
             </div>
+          </form>
+
+          {/*
+            Its own form, outside the one above: forms do not nest, and this
+            must not ride along with Save Changes either — taking a product off
+            sale is not something to do as a side effect of fixing a typo in
+            its description.
+          */}
+          <form class="storefront-state" method="post" action={`/admin/products/${product.id}/storefront`}>
+            <input type="hidden" name="on_storefront" value={offStorefront ? 'yes' : 'no'} />
+            <div>
+              <span class="field-label">Storefront</span>
+              <p class="storefront-state-copy">
+                {offStorefront ? (
+                  <>
+                    Off the storefront{withdrawnOn ? ` since ${withdrawnOn}` : ''}. It is in no
+                    listing, no search and no filter, and its own address returns Not Found.
+                    Nothing has been deleted.
+                  </>
+                ) : (
+                  <>Live. Customers can find it, open it and buy it.</>
+                )}
+              </p>
+            </div>
+            <button type="submit" class={offStorefront ? 'btn' : 'btn secondary'}>
+              {offStorefront ? 'Put back on storefront' : 'Take off storefront'}
+            </button>
           </form>
         </div>
       </div>
@@ -1032,6 +1078,44 @@ adminProducts.post('/:id/pending/:pendingId/discard', (c) => {
     )
     .run()
   return c.redirect(`/admin/products/${id}`, 303)
+})
+
+/**
+ * Take a product off the storefront, or put it back.
+ *
+ * Not a toggle. The form says which state it wants, so a double submit, a
+ * back-button re-post or two operators on two phones all land on the state the
+ * button they pressed was labelled with — a toggle would flip whatever it found
+ * and the second submit would quietly undo the first.
+ *
+ * Withdrawing is not deleting and not unshelving: the row, its photographs, its
+ * variants and every order line naming it are untouched, and its category is
+ * left exactly where it was so putting it back needs no second decision.
+ */
+adminProducts.post('/:id/storefront', async (c) => {
+  const id = Number(c.req.param('id'))
+  const [product] = db.select().from(products).where(eq(products.id, id)).all()
+  if (!product) return c.notFound()
+  const back = `/admin/products/${id}`
+
+  const form = await c.req.formData().catch(() => null)
+  if (!form) {
+    return c.redirect(`${back}?error=${encodeURIComponent('That submit was not readable.')}`, 303)
+  }
+
+  const wanted = String(form.get('on_storefront') ?? '')
+  if (wanted !== 'yes' && wanted !== 'no') {
+    return c.redirect(`${back}?error=${encodeURIComponent('Nothing was changed.')}`, 303)
+  }
+
+  const hiddenAt = wanted === 'no' ? Math.floor(Date.now() / 1000) : null
+  db.update(products).set({ hiddenAt }).where(eq(products.id, id)).run()
+
+  const message =
+    hiddenAt === null
+      ? 'Back on the storefront.'
+      : 'Taken off the storefront. Customers can no longer find or buy it.'
+  return c.redirect(`${back}?saved=${encodeURIComponent(message)}`, 303)
 })
 
 /**

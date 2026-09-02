@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { db } from '../db/client.js'
 import { orderEvents, orderItems, orders, productVariants } from '../db/schema.js'
 import type { FulfilmentState, Order, OrderEvent, OrderItem } from '../db/schema.js'
+import { formatDateTime } from '../lib/date.js'
 import { formatPaisa } from '../lib/money.js'
 import {
   formatFulfilmentState,
@@ -61,17 +62,6 @@ function fetchOrdersWithDetails(filterStates: FulfilmentState[]): OrderWithDetai
     items: itemMap.get(order.id) ?? [],
     events: eventMap.get(order.id) ?? [],
   }))
-}
-
-function formatDate(timestamp: number): string {
-  const date = new Date(timestamp * 1000)
-  return date.toLocaleString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 adminOrders.get('/', (c) => {
@@ -228,7 +218,7 @@ adminOrders.get('/', (c) => {
                       <td>
                         <strong>{formatOrderId(o.order.id)}</strong>
                       </td>
-                      <td class="muted">{formatDate(o.order.createdAt)}</td>
+                      <td class="muted">{formatDateTime(o.order.createdAt)}</td>
                       <td>{o.order.customerName}</td>
                       <td class="muted">{o.order.customerPhone}</td>
                       <td>{formatPaisa(o.order.totalPaisa)}</td>
@@ -352,7 +342,7 @@ function ActiveOrderCard(props: { orderDetail: OrderWithDetails }) {
             {formatFulfilmentState(state)}
           </span>
         </div>
-        <span class="order-meta">{formatDate(order.createdAt)}</span>
+        <span class="order-meta">{formatDateTime(order.createdAt)}</span>
       </div>
 
       <div class="order-details">
@@ -445,7 +435,7 @@ function OrderDialog(props: { orderDetail: OrderWithDetails }) {
       <h2 style="margin-top: 0;">Order {formatOrderId(order.id)}</h2>
 
       <p class="muted">
-        Placed on {formatDate(order.createdAt)} · Payment: {order.paymentTier.toUpperCase()}
+        Placed on {formatDateTime(order.createdAt)} · Payment: {order.paymentTier.toUpperCase()}
       </p>
 
       <div style="margin: 16px 0;">
@@ -500,7 +490,7 @@ function OrderDialog(props: { orderDetail: OrderWithDetails }) {
             <li>
               <strong>{formatFulfilmentState(ev.toState)}</strong>
               {ev.fromState ? <span class="muted"> (from {formatFulfilmentState(ev.fromState)})</span> : null}
-              <div class="muted">{formatDate(ev.createdAt)}</div>
+              <div class="muted">{formatDateTime(ev.createdAt)}</div>
             </li>
           ))}
         </ul>

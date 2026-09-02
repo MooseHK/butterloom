@@ -513,6 +513,16 @@ storefront.get('/p/:slug', (c) => {
             <button type="submit" class="btn" id="add-to-cart-btn">
               Add to cart
             </button>
+            {/*
+              Empty in the bytes the CDN caches, and it has to stay that way for
+              the same reason the recently-viewed rail below does: this document
+              is served from the Dhaka PoP, so anything rendered here would be
+              handed to the next shopper. The script above fills it from the
+              reply to its own POST, which is per-shopper and uncached — which is
+              precisely how a page that may not assert availability can still
+              tell one person that this piece is sold out.
+            */}
+            <p class="buy-msg" id="add-to-cart-msg" role="alert" hidden />
           </form>
 
           {/*
@@ -543,19 +553,38 @@ storefront.get('/p/:slug', (c) => {
           __html: `
             var form = document.getElementById('add-to-cart-form');
             var btn = document.getElementById('add-to-cart-btn');
+            var say = document.getElementById('add-to-cart-msg');
             if (form && btn) {
               form.addEventListener('submit', function(e) {
                 e.preventDefault();
                 var prevText = btn.textContent;
                 btn.disabled = true;
                 btn.textContent = 'Adding…';
+                if (say) { say.hidden = true; say.textContent = ''; }
                 fetch('/cart/add', {
                   method: 'POST',
                   body: new FormData(form),
                   headers: { 'Accept': 'application/json' }
                 })
+                /* The body is read whatever the status is: a refusal carries
+                   the reason to print, and it is the only place that reason
+                   exists — this page is edge-cached and cannot say a word
+                   about stock on its own. */
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
+                  if (!data || data.ok !== true) {
+                    /* Not "Added to cart ✓". The old script said that on
+                       every reply it got, including the ones that were a
+                       refusal, which is how adding a sold-out piece came to
+                       look like it had worked. */
+                    if (say) {
+                      say.textContent = (data && data.error) || 'Could not add this to your cart.';
+                      say.hidden = false;
+                    }
+                    btn.disabled = false;
+                    btn.textContent = prevText;
+                    return;
+                  }
                   btn.textContent = 'Added to cart ✓';
                   var badge = document.getElementById('cart-badge');
                   if (badge && data.count) {

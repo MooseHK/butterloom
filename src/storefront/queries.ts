@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, exists, inArray, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, exists, inArray, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { db } from '../db/client.js'
 import {
@@ -28,6 +28,29 @@ import type { Allowed, ListingParams, OptionFilter } from './listing.js'
 export interface ImageWithDerivatives {
   image: ProductImage
   derivatives: ImageDerivative[]
+}
+
+/**
+ * The one predicate that decides whether a product is on the storefront, and
+ * the reason every read below takes an options bag rather than reading
+ * `products.hiddenAt` for itself: a product withdrawn from the shop has to
+ * disappear from the listings, the search, the facets, the shelf counts, the
+ * recently-viewed rail and its own URL, and a per-call-site `isNull` is six
+ * places for the seventh caller to forget.
+ *
+ * Every one of these functions defaults to the storefront's answer even though
+ * the admin also calls some of them. Getting it wrong in that direction shows
+ * an operator too little; getting it wrong in the other direction sells
+ * something that was taken off sale.
+ */
+function onStorefront(includeHidden: boolean | undefined) {
+  return includeHidden ? undefined : isNull(products.hiddenAt)
+}
+
+/** Options shared by the reads that the admin can ask to see past. */
+export interface ScopeOptions {
+  /** The admin's own screens pass true; the storefront never does. */
+  includeHidden?: boolean
 }
 
 export interface ProductListing {
@@ -195,10 +218,11 @@ export function listProducts(options: {
   limit?: number
   /** The search box's term, scoping the listing the same way categoryId does. */
   q?: string
-} = {}): ListingPage {
+} & ScopeOptions = {}): ListingPage {
   const params = options.params ?? emptyParams
   const categoryId = options.categoryId ?? null
   const where = and(
+    onStorefront(options.includeHidden),
     categoryId === null ? undefined : eq(products.categoryId, categoryId),
     matchesFilters(params.filters),
     matchesSearch(options.q),
@@ -235,12 +259,17 @@ export interface CategoryListing {
  * The shelves, in the order the operator put them in, each with how much is on
  * it. Empty ones are included: the admin needs to see a shelf it has just made,
  * and the storefront decides for itself whether to draw a tile for it.
+ *
+ * The count is what the storefront's tiles are drawn from, so by default it
+ * counts only what is on the storefront. Otherwise a shelf holding nothing but
+ * withdrawn products still draws a tile, and the tile leads to an empty page.
  */
-export function listCategories(): CategoryListing[] {
+export function listCategories(options: ScopeOptions = {}): CategoryListing[] {
   const counts = new Map(
     db
       .select({ categoryId: products.categoryId, n: count() })
       .from(products)
+      .where(onStorefront(options.includeHidden))
       .groupBy(products.categoryId)
       .all()
       .map((r) => [r.categoryId, r.n] as const),
@@ -263,10 +292,17 @@ export function listCategories(): CategoryListing[] {
  * called with came out of a visitor's browser, and the product it once named
  * may have since left the catalogue.
  */
-export function listProductsBySlugs(slugs: string[]): ProductListing[] {
+export function listProductsBySlugs(slugs: string[], options: ScopeOptions = {}): ProductListing[] {
   if (slugs.length === 0) return []
 
-  const rows = db.select().from(products).where(inArray(products.slug, slugs)).all()
+  // A withdrawn product drops out here for the same reason a deleted one does:
+  // the list came out of a visitor's browser and describes a catalogue that has
+  // since moved on.
+  const rows = db
+    .select()
+    .from(products)
+    .where(and(onStorefront(options.includeHidden), inArray(products.slug, slugs)))
+    .all()
   // A repeated slug keeps its first position rather than its last — the row
   // itself is already deduplicated by SELECT, this only decides where it sorts.
   const order = new Map<string, number>()
@@ -314,7 +350,10 @@ export interface Facet {
  * one who does not. A real ordering is a position column on a value the day
  * anybody minds.
  */
-export function facetsFor(categoryId: number | null, options: { q?: string } = {}): Facet[] {
+export function facetsFor(
+  categoryId: number | null,
+  options: { q?: string } & ScopeOptions = {},
+): Facet[] {
   const rows = db
     .select({
       name: sql<string>`min(${variantOptions.name})`,
@@ -329,6 +368,9 @@ export function facetsFor(categoryId: number | null, options: { q?: string } = {
     .innerJoin(products, eq(products.id, productVariants.productId))
     .where(
       and(
+        // A withdrawn product's colours are not colours the shop is offering,
+        // so they must not appear as filters a shopper can tick.
+        onStorefront(options.includeHidden),
         categoryId === null ? undefined : eq(products.categoryId, categoryId),
         matchesSearch(options.q),
       ),
@@ -444,8 +486,15 @@ export interface ProductDetail {
   variants: VariantWithOptions[]
 }
 
-export function findProductBySlug(slug: string): ProductDetail | null {
-  const [product] = db.select().from(products).where(eq(products.slug, slug)).all()
+export function findProductBySlug(slug: string, options: ScopeOptions = {}): ProductDetail | null {
+  // Null, not a detail the caller has to re-check: /p/:slug turns this into a
+  // 404, which is what a withdrawn product's URL should answer. Anything less
+  // leaves the page live and buyable for anyone holding the link.
+  const [product] = db
+    .select()
+    .from(products)
+    .where(and(onStorefront(options.includeHidden), eq(products.slug, slug)))
+    .all()
   if (!product) return null
 
   const images = db
