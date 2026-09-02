@@ -118,10 +118,32 @@ adminOrders.get('/', (c) => {
             <p class="muted">No active orders right now.</p>
           ) : (
             <>
+              {/*
+                An operator searching the active board is nearly always holding
+                a phone call or a parcel: a customer's name, or the name of the
+                thing in the box. Both are already on the card, so this filters
+                what is in front of them rather than costing a round trip to be
+                told the same thing.
+              */}
+              <div class="search-bar">
+                <label class="label" for="active-search">
+                  Find an order
+                </label>
+                <input
+                  id="active-search"
+                  type="search"
+                  placeholder="Customer or product…"
+                  autocomplete="off"
+                  oninput="filterActiveOrders()"
+                />
+              </div>
+              <p class="muted" id="active-none" hidden>
+                No active order matches that.
+              </p>
               {placedList.length > 0 ? (
-                <section style="margin-bottom: 32px;">
+                <section class="order-group" style="margin-bottom: 32px;">
                   <h2>
-                    Placed <span class="muted">({placedList.length})</span>
+                    Placed <span class="muted group-count">({placedList.length})</span>
                   </h2>
                   <p class="muted">New orders awaiting operator confirmation and packing.</p>
                   {placedList.map((o) => (
@@ -131,9 +153,9 @@ adminOrders.get('/', (c) => {
               ) : null}
 
               {packedList.length > 0 ? (
-                <section style="margin-bottom: 32px;">
+                <section class="order-group" style="margin-bottom: 32px;">
                   <h2>
-                    Packed <span class="muted">({packedList.length})</span>
+                    Packed <span class="muted group-count">({packedList.length})</span>
                   </h2>
                   <p class="muted">Orders packed and ready for courier handover.</p>
                   {packedList.map((o) => (
@@ -143,9 +165,9 @@ adminOrders.get('/', (c) => {
               ) : null}
 
               {handedOverList.length > 0 ? (
-                <section style="margin-bottom: 32px;">
+                <section class="order-group" style="margin-bottom: 32px;">
                   <h2>
-                    Handed Over <span class="muted">({handedOverList.length})</span>
+                    Handed Over <span class="muted group-count">({handedOverList.length})</span>
                   </h2>
                   <p class="muted">With courier for delivery across Bangladesh.</p>
                   {handedOverList.map((o) => (
@@ -153,6 +175,7 @@ adminOrders.get('/', (c) => {
                   ))}
                 </section>
               ) : null}
+              <script dangerouslySetInnerHTML={{ __html: filterActiveOrdersScript }} />
             </>
           )}
         </div>
@@ -162,7 +185,7 @@ adminOrders.get('/', (c) => {
             <input
               id="prev-search"
               type="search"
-              placeholder="Search by ID, customer name or phone..."
+              placeholder="ID, customer, phone or product…"
               style="max-width: 20rem;"
               oninput="filterPreviousOrders()"
             />
@@ -190,13 +213,18 @@ adminOrders.get('/', (c) => {
               <tbody>
                 {previousOrders.map((o) => {
                   const state = o.order.fulfilmentState
+                  // The same four fields the active board searches, collapsed
+                  // into one attribute so both tabs answer the same question.
+                  const haystack = [
+                    formatOrderId(o.order.id),
+                    o.order.customerName,
+                    o.order.customerPhone,
+                    ...o.items.map((item) => `${item.productTitle} ${item.variantLabel}`),
+                  ]
+                    .join(' ')
+                    .toLowerCase()
                   return (
-                    <tr
-                      data-order-id={formatOrderId(o.order.id).toLowerCase()}
-                      data-customer={o.order.customerName.toLowerCase()}
-                      data-phone={o.order.customerPhone.toLowerCase()}
-                      data-status={state}
-                    >
+                    <tr data-search={haystack} data-status={state}>
                       <td>
                         <strong>{formatOrderId(o.order.id)}</strong>
                       </td>
@@ -225,24 +253,33 @@ adminOrders.get('/', (c) => {
             </table>
           </div>
           {previousOrders.length === 0 ? <p class="muted">No previous orders found.</p> : null}
+          <p class="muted" id="prev-none" hidden>
+            No previous order matches that.
+          </p>
 
           <script
             dangerouslySetInnerHTML={{
               __html: `
                 function filterPreviousOrders() {
-                  var q = (document.getElementById('prev-search').value || '').toLowerCase();
+                  var q = (document.getElementById('prev-search').value || '').toLowerCase().trim();
+                  var terms = q ? q.split(/\\s+/) : [];
                   var st = document.getElementById('prev-status-filter').value;
                   var rows = document.querySelectorAll('#prev-table tbody tr');
+                  var shown = 0;
                   for (var i = 0; i < rows.length; i++) {
                     var r = rows[i];
-                    var id = r.getAttribute('data-order-id') || '';
-                    var name = r.getAttribute('data-customer') || '';
-                    var phone = r.getAttribute('data-phone') || '';
-                    var status = r.getAttribute('data-status') || '';
-                    var matchText = !q || id.includes(q) || name.includes(q) || phone.includes(q);
-                    var matchStatus = !st || status === st;
-                    r.style.display = (matchText && matchStatus) ? '' : 'none';
+                    var hay = r.getAttribute('data-search') || '';
+                    var matchText = true;
+                    for (var t = 0; t < terms.length; t++) {
+                      if (hay.indexOf(terms[t]) === -1) { matchText = false; break; }
+                    }
+                    var matchStatus = !st || (r.getAttribute('data-status') || '') === st;
+                    var hit = matchText && matchStatus;
+                    r.style.display = hit ? '' : 'none';
+                    if (hit) shown++;
                   }
+                  var none = document.getElementById('prev-none');
+                  if (none) none.hidden = shown > 0 || rows.length === 0;
                 }
               `,
             }}
@@ -253,13 +290,61 @@ adminOrders.get('/', (c) => {
   )
 })
 
+/**
+ * Hides the cards that do not match and re-counts each state heading as it
+ * goes, because "Placed (7)" over three visible cards is a worse answer than
+ * no count at all. A group with nothing left in it goes away entirely rather
+ * than sitting there as a heading over a gap.
+ */
+const filterActiveOrdersScript = `
+  function filterActiveOrders() {
+    var q = (document.getElementById('active-search').value || '').toLowerCase().trim();
+    var terms = q ? q.split(/\\s+/) : [];
+    var groups = document.querySelectorAll('.order-group');
+    var shown = 0;
+    for (var g = 0; g < groups.length; g++) {
+      var cards = groups[g].querySelectorAll('.order-card');
+      var visible = 0;
+      for (var i = 0; i < cards.length; i++) {
+        var hay = cards[i].getAttribute('data-search') || '';
+        var hit = true;
+        for (var t = 0; t < terms.length; t++) {
+          if (hay.indexOf(terms[t]) === -1) { hit = false; break; }
+        }
+        cards[i].style.display = hit ? '' : 'none';
+        if (hit) visible++;
+      }
+      groups[g].style.display = visible > 0 ? '' : 'none';
+      var count = groups[g].querySelector('.group-count');
+      if (count) count.textContent = '(' + visible + ')';
+      shown += visible;
+    }
+    var none = document.getElementById('active-none');
+    if (none) none.hidden = shown > 0;
+  }
+`
+
 function ActiveOrderCard(props: { orderDetail: OrderWithDetails }) {
   const { order, items } = props.orderDetail
   const state = order.fulfilmentState
   const advanceLabel = getAdvanceActionLabel(state)
 
+  // Order id, customer, phone and the titles of what is in the parcel — the
+  // four things an operator holding a call actually has to search on. The
+  // titles are the snapshot on the order item, not a join to the catalogue: a
+  // product renamed after despatch must still be findable by what the customer
+  // was told they were buying.
+  const haystack = [
+    formatOrderId(order.id),
+    order.customerName,
+    order.customerPhone,
+    ...items.map((item) => `${item.productTitle} ${item.variantLabel}`),
+  ]
+    .join(' ')
+    .toLowerCase()
+
   return (
-    <div class="order-card">
+    <div class="order-card" data-search={haystack}>
       <div class="order-header">
         <div>
           <strong style="font-size: 17px;">{formatOrderId(order.id)}</strong>
