@@ -541,6 +541,18 @@ adminProducts.get('/:id', (c) => {
       <div class="product-editor">
         {error ? <p class="notice error">{error}</p> : null}
         {notice ? <p class="notice">{notice}</p> : null}
+        {/*
+          At the top, not only in the control at the foot. This editor opens on
+          the photograph uploader and runs several screens deep, so an operator
+          editing a price could otherwise get all the way to Save Changes
+          without ever learning that no customer can see this product.
+        */}
+        {offStorefront ? (
+          <p class="notice">
+            Not on the storefront{withdrawnOn ? ` since ${withdrawnOn}` : ''}. Edits save
+            normally; nothing here is visible to customers until it goes back.
+          </p>
+        ) : null}
         {uploaded > 0 ? (
           <p class="notice">
             {uploaded} {uploaded === 1 ? 'photograph' : 'photographs'} accepted — encoding in the
