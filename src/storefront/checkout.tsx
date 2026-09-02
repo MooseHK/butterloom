@@ -2,6 +2,12 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../db/client.js'
 import { cartItems, orderEvents, orderItems, orders, productVariants } from '../db/schema.js'
+import {
+  addressLimits,
+  composeAddress,
+  missingAddressParts,
+  readAddressParts,
+} from '../lib/address.js'
 import { formatPaisa } from '../lib/money.js'
 import { StorefrontLayout } from '../views/storefront.js'
 import { getCartItemsForSession } from './queries.js'
@@ -81,19 +87,86 @@ checkoutRoutes.get('/', (c) => {
               />
             </div>
 
+            {/*
+              Four fields rather than one textarea. Each says what it wants, so
+              the address arrives in the shape a courier reads it in instead of
+              whatever order the customer thought of; the required ones cannot
+              be skipped; and every one carries the autocomplete token a phone
+              has actually saved, where the textarea had only street-address
+              and so was usually filled in by hand.
+
+              Stored as one composed address — see lib/address.ts for why the
+              parts are not kept in columns of their own.
+            */}
             <div class="form-group">
-              <label class="form-label" for="delivery_address">
-                Address
+              <label class="form-label" for="address_line">
+                House and road
               </label>
-              <textarea
-                id="delivery_address"
-                name="delivery_address"
-                class="form-textarea"
-                rows={3}
+              <input
+                id="address_line"
+                name="address_line"
+                class="form-input"
                 required
-                autocomplete="street-address"
-                placeholder="House, road, area, district"
-              ></textarea>
+                autocomplete="address-line1"
+                placeholder="House 42, Road 12"
+                maxlength={addressLimits.line}
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="address_area">
+                Area or thana
+              </label>
+              <input
+                id="address_area"
+                name="address_area"
+                class="form-input"
+                required
+                autocomplete="address-line2"
+                placeholder="Dhanmondi"
+                maxlength={addressLimits.area}
+              />
+            </div>
+
+            {/*
+              City and postcode share a line: they are one line on the parcel,
+              the postcode is four characters, and on a phone this is the pair
+              that would otherwise leave two nearly empty rows.
+            */}
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="address_city">
+                  City or district
+                </label>
+                <input
+                  id="address_city"
+                  name="address_city"
+                  class="form-input"
+                  required
+                  autocomplete="address-level2"
+                  placeholder="Dhaka"
+                  maxlength={addressLimits.city}
+                />
+              </div>
+              <div class="form-group form-group-narrow">
+                <label class="form-label" for="address_postcode">
+                  Postcode — optional
+                </label>
+                {/*
+                  inputmode, not type="number": a postcode is four digits but it
+                  is not a quantity, and a number input brings spinners, drops
+                  a leading zero and lets the wheel change it by scrolling.
+                */}
+                <input
+                  id="address_postcode"
+                  name="address_postcode"
+                  class="form-input"
+                  inputmode="numeric"
+                  autocomplete="postal-code"
+                  placeholder="1209"
+                  maxlength={addressLimits.postcode}
+                />
+              </div>
             </div>
 
             <div class="form-group">
@@ -160,11 +233,27 @@ checkoutRoutes.post('/', async (c) => {
 
   const customerName = String(form.get('customer_name') ?? '').trim()
   const customerPhone = String(form.get('customer_phone') ?? '').trim()
-  const deliveryAddress = String(form.get('delivery_address') ?? '').trim()
   const deliveryNotes = String(form.get('delivery_notes') ?? '').trim()
 
-  if (!customerName || !customerPhone || !deliveryAddress) {
-    return c.redirect('/checkout?error=Please+fill+in+all+required+fields', 303)
+  const addressParts = readAddressParts(form)
+  const deliveryAddress = composeAddress(addressParts)
+
+  // Named, not counted. "Please fill in all required fields" sends a customer
+  // back to hunt for which one, and the browser's own `required` has already
+  // caught every case except a hand-posted form or a field holding only
+  // spaces — so the one time this message is read is the one time it has to
+  // be specific.
+  const missing = [
+    ...(customerName ? [] : ['your name']),
+    ...(customerPhone ? [] : ['a phone number']),
+    ...missingAddressParts(addressParts),
+  ]
+  if (missing.length > 0) {
+    const list =
+      missing.length === 1
+        ? missing[0]
+        : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`
+    return c.redirect(`/checkout?error=${encodeURIComponent(`Please add ${list}.`)}`, 303)
   }
 
   let orderId: number

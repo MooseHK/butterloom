@@ -452,6 +452,53 @@ const css = `
   .new-variant-chip { border-style: dashed; border-color: var(--ink); background: var(--shot); }
   .new-variant-options-inputs { display: inline-flex; align-items: center; gap: 4px; }
 
+  /*
+    Variants & stock on a phone.
+
+    These are chips: each one sizes to its own label, which on a wide screen
+    puts three or four on a line and reads well. On a 390px phone each chip is
+    *nearly* the full measure and none of them reach it, so the section became
+    a ragged staircase — "Ecru / M" stopping 145px short of the edge, "Deep
+    Indigo / XL" stopping 88px short — with the stock box a 50px cell somewhere
+    in the middle of the gap. The measured widths were 217, 225, 229 and 274 in
+    a 362px column.
+
+    So below the breakpoint they stop being chips and become rows: one per
+    line, full width, the label taking up the slack and the stock box against
+    the right edge where the eye can run down the column of numbers. The
+    inputs also get real widths — the axis and value boxes were 75px, which
+    truncated their own placeholders to "Axis (e" and "Value (e.g".
+  */
+  @media (max-width: 640px) {
+    .admin-variant-options { flex-direction: column; align-items: stretch; }
+    .admin-variant-chip { width: 100%; }
+    /* min-width: 0 or a long label refuses to shrink and pushes the stock box
+       back off the edge, which is the bug all over again. */
+    .variant-chip-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    .variant-qty-wrapper { flex: 0 0 auto; }
+    .variant-qty-input { width: 4.5rem; }
+    /* The divider earns its keep between chips on one line; between a label
+       and the right edge of its own row it is just a dot in the gap. */
+    .admin-variant-chip .variant-divider { display: none; }
+
+    /* The add-variant row wraps: the two text boxes take the first line and
+       share it, the stock box and cancel take the second. Both boxes fitting
+       on one line with the stock box leaves each about 90px, which is not
+       enough for what they are asking for. */
+    .new-variant-chip { flex-wrap: wrap; }
+    /* min-width: 0 on the wrapper as well as on the inputs. A flex item
+       defaults to min-width: auto, so this div refused to shrink below the
+       min-content width of the two boxes inside it and pushed 11px of
+       horizontal scroll onto the whole document. */
+    .new-variant-options-inputs { display: flex; flex: 1 1 100%; gap: 6px; min-width: 0; }
+    .variant-axis-input, .variant-val-input { flex: 1 1 0; width: auto; min-width: 0; }
+
+    /* The section's primary action, so it takes the measure rather than
+       sitting thumb-sized against the left edge under a column of full-width
+       rows. */
+    .add-variant-btn { width: 100%; justify-content: center; }
+  }
+
   .btn { display: inline-flex; align-items: center; justify-content: center; padding: 14px 24px;
     background: var(--ink); color: var(--paper); border: 1px solid var(--ink); border-radius: 2px;
     font: 500 13px/1 system-ui, -apple-system, sans-serif; letter-spacing: 0.12em; text-transform: uppercase;

@@ -484,6 +484,17 @@ export interface ProductDetail {
    * type, and the variants themselves as the things add-to-cart can name.
    */
   variants: VariantWithOptions[]
+  /**
+   * The shelf this product stands on, for the link back to it — null when the
+   * product is unshelved, which is the state every product starts in, and also
+   * when the shelf it was on has since been deleted (the FK is set null, not
+   * cascaded, so the product outlives its category).
+   *
+   * The row rather than the id: the page needs the name to print and the slug
+   * to link to, and looking those up here saves the caller a second query for
+   * a fact this function is already holding the key to.
+   */
+  category: Category | null
 }
 
 export function findProductBySlug(slug: string, options: ScopeOptions = {}): ProductDetail | null {
@@ -505,11 +516,17 @@ export function findProductBySlug(slug: string, options: ScopeOptions = {}): Pro
     .all()
   const derivatives = derivativesFor(images)
 
+  const [category] =
+    product.categoryId === null
+      ? []
+      : db.select().from(categories).where(eq(categories.id, product.categoryId)).all()
+
   return {
     product,
     images: images.map((image) => ({ image, derivatives: derivatives.get(image.id) ?? [] })),
     // Position order, not alphabetical: the operator decided S came before M.
     variants: variantsForProduct(product.id),
+    category: category ?? null,
   }
 }
 

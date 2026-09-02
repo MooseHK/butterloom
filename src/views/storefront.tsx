@@ -615,6 +615,32 @@ const css = `
 
   /* Forms */
   .form-group { display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px; }
+  /*
+    Two fields on one line — city and its postcode, which are one line on the
+    parcel. It wraps rather than squeezing: below about 380px the postcode box
+    would be narrower than the four digits it is asking for, and a field too
+    small to show its own answer is worse than a field on its own row.
+    min-width: 0 on the groups, or a long label refuses to shrink and pushes
+    the pair past the edge of the panel.
+  */
+  /*
+    flex-end, so the two inputs sit on one line however their labels wrap.
+    "Postcode — optional" takes two lines in a column this narrow while "City
+    or district" takes one, which pushed the postcode box 15px below the city
+    box — aligning the group bottoms puts the boxes back on the same line and
+    stays true whatever a label is later renamed to.
+  */
+  .form-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 12px; }
+  /*
+    9rem, not 12: at 12 the pair broke apart below about 360px and left the
+    four-character postcode box sitting alone on a full-width row. 9rem keeps
+    them together down to a 320px phone, where the city box still gets ~148px
+    — comfortably more than "Chattogram" needs.
+  */
+  .form-row .form-group { flex: 1 1 9rem; min-width: 0; }
+  /* Sized to its content, and never grows: a 200px box asking for four digits
+     tells the customer to expect something longer than a postcode. */
+  .form-row .form-group-narrow { flex: 0 1 7.5rem; }
   .form-label { font: 400 10px/1 system-ui, -apple-system, sans-serif;
     letter-spacing: 0.16em; text-transform: uppercase; color: var(--tertiary); }
   /* 16px is not a taste call: Safari on iOS zooms the whole page in when a text

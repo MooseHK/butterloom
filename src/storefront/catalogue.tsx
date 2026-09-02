@@ -450,7 +450,7 @@ storefront.get('/recently-viewed', (c) => {
 storefront.get('/p/:slug', (c) => {
   const detail = findProductBySlug(c.req.param('slug'))
   if (!detail) return c.notFound()
-  const { product, images, variants } = detail
+  const { product, images, variants, category } = detail
 
   // Main's rule, on the variant table rather than the stock table it was
   // written against: a lone unnamed configuration is not a choice to offer.
@@ -466,9 +466,22 @@ storefront.get('/p/:slug', (c) => {
       <main>
         {/* The wordmark goes home, but it reads as a logo. This says it in
             words, at the top of the one page a visitor arrives on from a
-            search result with no idea what is above it. */}
+            search result with no idea what is above it.
+
+            The shelf is the second step, and the one that matters most on this
+            page: somebody who landed here from a search and likes what they
+            see wants the other sarees, and until now the only way up was the
+            whole collection. Same shape as the crumbs on a listing page, so
+            the two read as one trail. Omitted for an unshelved product rather
+            than shown dead — there is no page for "no shelf". */}
         <nav class="crumbs" aria-label="Breadcrumb">
           <a href="/">The collection</a>
+          {category ? (
+            <>
+              <i class="dot" />
+              <a href={`/c/${category.slug}`}>{category.name}</a>
+            </>
+          ) : null}
         </nav>
         <Shots images={images} />
         <div class="detail">

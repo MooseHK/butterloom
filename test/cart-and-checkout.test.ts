@@ -300,7 +300,8 @@ test('checkout validates required fields and blocks invalid submit', async () =>
   const badForm = new FormData()
   badForm.set('customer_name', 'Tasnim Ali')
   badForm.set('customer_phone', '01812345678')
-  badForm.set('delivery_address', '') // empty
+  // Address parts left out entirely — the browser's own `required` catches
+  // this in a real submit, so this is the hand-posted case.
 
   const res = await app.request('/checkout', {
     method: 'POST',
@@ -310,6 +311,54 @@ test('checkout validates required fields and blocks invalid submit', async () =>
 
   assert.equal(res.status, 303)
   assert.match(res.headers.get('Location') ?? '', /\/checkout\?error=/)
+  // Named, not counted: the customer is told which parts to go back and add.
+  const reason = decodeURIComponent(
+    (res.headers.get('Location') ?? '').replace('/checkout?error=', ''),
+  )
+  assert.equal(reason, 'Please add house and road, area or thana and city or district.')
+
+  // Nothing was ordered behind the refusal.
+  const placed = db.select().from(orders).where(eq(orders.customerName, 'Tasnim Ali')).all()
+  assert.equal(placed.length, 0)
+})
+
+/**
+ * The one field that is genuinely optional. A customer who does not know their
+ * postcode must still be able to order — plenty do not.
+ */
+test('an order places without a postcode', async () => {
+  const app = buildTestApp()
+  const { product, stock } = seedProduct(`nopc-${Date.now()}`, 'No Postcode Saree', 90000, 3)
+
+  const addForm = new FormData()
+  addForm.set('product_id', String(product.id))
+  addForm.set('variant_id', String(stock.id))
+  const addRes = await app.request('/cart/add', { method: 'POST', body: addForm })
+  const cookie = addRes.headers.get('Set-Cookie')!
+
+  const checkout = new FormData()
+  checkout.set('customer_name', 'Korom Ali')
+  checkout.set('customer_phone', '01711111111')
+  checkout.set('address_line', 'House 7, Road 3')
+  checkout.set('address_area', 'Uttara Sector 4')
+  checkout.set('address_city', 'Dhaka')
+
+  const res = await app.request('/checkout', {
+    method: 'POST',
+    body: checkout,
+    headers: { Cookie: cookie },
+  })
+  assert.equal(res.status, 303)
+  const location = res.headers.get('Location') ?? ''
+  assert.match(location, /\/order\/\d+/)
+
+  const [order] = db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, Number(location.replace('/order/', ''))))
+    .all()
+  // No trailing space where the postcode would have gone.
+  assert.equal(order?.deliveryAddress, 'House 7, Road 3\nUttara Sector 4\nDhaka')
 })
 
 test('checkout verifies stock, decrements atomically, creates order and clears cart', async () => {
@@ -334,7 +383,10 @@ test('checkout verifies stock, decrements atomically, creates order and clears c
   const checkoutForm = new FormData()
   checkoutForm.set('customer_name', 'Maksuda Begum')
   checkoutForm.set('customer_phone', '01912345678')
-  checkoutForm.set('delivery_address', 'Flat 4B, Road 12, Banani, Dhaka')
+  checkoutForm.set('address_line', 'Flat 4B, Road 12')
+  checkoutForm.set('address_area', 'Banani')
+  checkoutForm.set('address_city', 'Dhaka')
+  checkoutForm.set('address_postcode', '1213')
   checkoutForm.set('delivery_notes', 'Call before arrival')
 
   const res = await app.request('/checkout', {
@@ -353,7 +405,8 @@ test('checkout verifies stock, decrements atomically, creates order and clears c
   assert.ok(order)
   assert.equal(order.customerName, 'Maksuda Begum')
   assert.equal(order.customerPhone, '01912345678')
-  assert.equal(order.deliveryAddress, 'Flat 4B, Road 12, Banani, Dhaka')
+  // Composed from the parts, one line each, postcode after the city.
+  assert.equal(order.deliveryAddress, 'Flat 4B, Road 12\nBanani\nDhaka 1213')
   assert.equal(order.deliveryNotes, 'Call before arrival')
   assert.equal(order.totalPaisa, 400000 * 3)
   assert.equal(order.fulfilmentState, 'placed')
