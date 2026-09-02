@@ -169,6 +169,11 @@ const css = `
   button { cursor: pointer; font-weight: 600; }
   button.secondary { border-color: var(--hairline); }
   button.danger { border-color: #d33; color: #d33; }
+  /* One row for the search boxes on the products and orders lists, so both
+     read the same and neither wraps its label onto its own line on a laptop. */
+  .search-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0 0; }
+  .search-bar input[type=search] { flex: 1 1 16rem; max-width: 24rem; }
+
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; margin: 16px 0; }
   table { border-collapse: collapse; width: 100%; min-width: 480px; }
   th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--hairline); }

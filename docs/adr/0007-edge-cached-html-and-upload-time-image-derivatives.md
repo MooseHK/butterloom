@@ -46,12 +46,17 @@ of the smallest instance ADR-0003 calls for.
 - **The AVIF/WebP encoder is a subprocess, not a language binding.** Derivative
   generation happens a handful of times a day inside an admin form, so shelling out
   keeps encoder choice independent of ADR-0005.
-- **Client JavaScript is roughly 1–2KB, hand-written, with no framework.** It covers
-  two interactions: the Pathao city/zone/area cascade that ADR-0004 makes mandatory,
+- **Client JavaScript is roughly 2–3KB, hand-written, with no framework.** It covers
+  four interactions: the Pathao city/zone/area cascade that ADR-0004 makes mandatory,
   fetching edge-cacheable option fragments rather than shipping the whole location
-  tree, and a cart count read from a client-readable cookie — which is what makes a
-  per-visitor badge possible on a shared cached page at all. Every form is a real
-  form that POSTs and redirects, so checkout completes with JavaScript disabled.
+  tree; a cart count read from a client-readable cookie, which is what makes a
+  per-visitor badge possible on a shared cached page at all; the add-to-cart button
+  on the product page, which posts by fetch and falls back to a real form submit;
+  and recently viewed, which reads a slug list out of the visitor's own
+  localStorage and fetches an edge-cacheable HTML fragment of the products it
+  names — the second use of the fragment pattern the Pathao cascade established.
+  Every form is a real form that POSTs and redirects, so checkout completes with
+  JavaScript disabled.
 - **Egress, not compute, is the largest infrastructure cost**, because every image
   byte is served to Bangladesh. Object storage is chosen for zero egress fees.
 - **An international-bandwidth disruption in Bangladesh leaves cached catalogue

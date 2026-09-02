@@ -233,8 +233,30 @@ adminProducts.get('/', (c) => {
       </form>
       <script dangerouslySetInnerHTML={{ __html: addRowScript(initialRows, maxRows) }} />
 
+      {/*
+        The admin is behind auth and never edge-cached, so unlike the storefront
+        there is no cache entry to protect and no reason to make this a URL: the
+        page already holds every product, and filtering what is in front of the
+        operator beats a round trip to be told the same thing. The ceiling is
+        the page itself — the day the catalogue outgrows one document, the
+        listing wants paging and this wants a `?q=` to go with it.
+      */}
+      <div class="search-bar">
+        <label class="label" for="product-search">
+          Find a product
+        </label>
+        <input
+          id="product-search"
+          type="search"
+          placeholder="Title or category…"
+          autocomplete="off"
+          oninput="filterProducts()"
+        />
+        <span id="product-count" class="muted" aria-live="polite"></span>
+      </div>
+
       <div class="table-wrap">
-        <table>
+        <table id="product-table">
           <thead>
             <tr>
               <th>Title</th>
@@ -249,17 +271,21 @@ adminProducts.get('/', (c) => {
             {rows.map((p) => {
               const tally = pending.get(p.id)
               const stock = stockCounts.get(p.id)
+              // The shelf name as the row prints it, so searching "unshelved"
+              // finds the products that have no shelf rather than nothing.
+              const shelf =
+                p.categoryId === null ? 'Unshelved' : (shelfNames.get(p.categoryId) ?? 'Unshelved')
               return (
-                <tr>
+                <tr data-search={`${p.title} ${p.slug} ${shelf}`.toLowerCase()}>
                   <td>
                     <a href={`/admin/products/${p.id}`}>{p.title}</a>
                   </td>
                   <td class="muted">{p.slug}</td>
                   <td>
-                    {p.categoryId === null ? (
+                    {p.categoryId === null || !shelfNames.has(p.categoryId) ? (
                       <span class="muted">Unshelved</span>
                     ) : (
-                      (shelfNames.get(p.categoryId) ?? <span class="muted">Unshelved</span>)
+                      shelf
                     )}
                   </td>
                   <td>{formatPaisa(p.pricePaisa)}</td>
@@ -287,9 +313,41 @@ adminProducts.get('/', (c) => {
         </table>
       </div>
       {rows.length === 0 ? <p class="muted">No products yet.</p> : null}
+      <p class="muted" id="product-none" hidden>
+        No product matches that.
+      </p>
+      <script dangerouslySetInnerHTML={{ __html: filterProductsScript }} />
     </AdminLayout>,
   )
 })
+
+/**
+ * Every term has to appear somewhere in the row — title, slug or shelf — in any
+ * order, so "indigo saree" finds the indigo saree however the operator holds
+ * the two words. Substring rather than whole-word: half a title typed into the
+ * box is the normal way to use one of these.
+ */
+const filterProductsScript = `
+  function filterProducts() {
+    var q = (document.getElementById('product-search').value || '').toLowerCase().trim();
+    var terms = q ? q.split(/\\s+/) : [];
+    var rows = document.querySelectorAll('#product-table tbody tr');
+    var shown = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var hay = rows[i].getAttribute('data-search') || '';
+      var hit = true;
+      for (var t = 0; t < terms.length; t++) {
+        if (hay.indexOf(terms[t]) === -1) { hit = false; break; }
+      }
+      rows[i].style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    }
+    var none = document.getElementById('product-none');
+    if (none) none.hidden = shown > 0 || rows.length === 0;
+    var count = document.getElementById('product-count');
+    if (count) count.textContent = q ? shown + ' of ' + rows.length : '';
+  }
+`
 
 adminProducts.post('/', async (c) => {
   const back = '/admin/products'

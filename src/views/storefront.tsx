@@ -18,6 +18,13 @@ export function StorefrontLayout(
     description?: string
     canonicalPath: string
     cartCount?: number
+    /**
+     * Set on a search result page: every distinct `?q=` a shopper can type is
+     * a junk URL for a crawler to index, and Google documents exactly that.
+     * `follow`, not `nofollow` — the products linked from the page are worth
+     * crawling even though the search URL itself is not worth indexing.
+     */
+    noindex?: boolean
   }>,
 ) {
   return (
@@ -34,8 +41,8 @@ export function StorefrontLayout(
           {/*
             viewport-fit=cover lets the page paint under the notch and the home
             indicator; the sheet then pays that back with env(safe-area-inset-*)
-            padding, which is what keeps the promo strip off the camera cutout
-            in landscape.
+            padding, which is what keeps the header off the camera cutout in
+            landscape.
           */}
           <meta
             name="viewport"
@@ -47,6 +54,7 @@ export function StorefrontLayout(
           <meta name="theme-color" content="#201e1b" media="(prefers-color-scheme: dark)" />
           <title>{props.title}</title>
           {props.description ? <meta name="description" content={props.description} /> : null}
+          {props.noindex ? <meta name="robots" content="noindex,follow" /> : null}
           <link rel="canonical" href={props.canonicalPath} />
           {/*
             <style> is a raw-text element: the browser does not decode character
@@ -71,20 +79,27 @@ export function StorefrontLayout(
           <script type="speculationrules" dangerouslySetInnerHTML={{ __html: speculationRules }} />
         </head>
         <body>
-          {/*
-            A constant, not a per-visitor message: that is what keeps it out of
-            the cache rules, since everyone is served the same strip. Kept to two
-            short runs because it has to sit on one line at 360px, and both are
-            things ADR-0003 and ADR-0004 actually commit us to — the strip is the
-            one place a first-time visitor learns they can pay at the door.
-          */}
-          <div class="promo">
-            Cash on delivery
-            <i class="dot" />
-            Dispatched daily
-          </div>
           <header class="site">
-            <div class="header-left" />
+            <div class="header-left">
+              {/* The one route into search from every page including /p/:slug,
+                  which carries no search box of its own. */}
+              <a class="search-btn" href="/search" aria-label="Search">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </a>
+            </div>
             <a class="wm" href="/">
               <i class="dot" />
               <b>Butterloom</b>
@@ -129,7 +144,6 @@ export function StorefrontLayout(
               <i class="dot" />
               <a href="/cart">Your cart</a>
             </nav>
-            <p class="muted">Delivered across Bangladesh</p>
           </footer>
           {/*
             The count, and only the count, comes off a cookie the page did not
@@ -193,9 +207,6 @@ const css = `
     --dot: #a3a194;
     /* The ground a photograph sits on before its bytes arrive. */
     --shot: #eae5db;
-    /* The promo strip is ink-on-paper reversed, so it needs its own two tokens. */
-    --strip: #33383a;
-    --strip-ink: #eee9e1;
     /* One gutter token, so the bleeds that cancel it stay honest. */
     --gutter: 20px;
     --edge: max(20px, env(safe-area-inset-left));
@@ -211,8 +222,6 @@ const css = `
       --hairline: #35312d;
       --dot: #83827b;
       --shot: #2c2926;
-      --strip: #2b2825;
-      --strip-ink: #cdc6b9;
     }
   }
   * { box-sizing: border-box; }
@@ -245,28 +254,19 @@ const css = `
   }
   .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--dot); flex: none; }
 
-  /* min-height, not height: at 360px the two runs still fit on one line, but a
-     longer strip or a larger text setting must be allowed to grow rather than
-     spill out of a fixed 34px band. */
-  /* flex: none on both bars — they are items in the body column now, and a
-     flex item's min-height is the first thing shrinking gives away. */
-  .promo { flex: none; display: flex; flex-wrap: wrap; align-items: center;
-    justify-content: center; gap: 9px; min-height: 34px;
-    padding: 6px max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left));
-    text-align: center; background: var(--strip); color: var(--strip-ink);
-    font: 400 9.5px/1 system-ui, -apple-system, sans-serif;
-    letter-spacing: 0.17em; text-transform: uppercase; }
-
   /* Sticky, so the wordmark and the cart are one thumb away down a long
-     catalogue rather than a scroll back to the top. The promo strip is a
-     one-time message and is allowed to leave. */
+     catalogue rather than a scroll back to the top. flex: none because it is an
+     item in the body column, and a flex item's height is the first thing
+     shrinking gives away. */
   header.site { position: sticky; top: 0; z-index: 10; flex: none;
     display: flex; align-items: center; justify-content: space-between;
     height: 58px; padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
     background: var(--paper); border-bottom: 1px solid var(--hairline); }
   .header-left, .header-right { width: 44px; }
   .header-right { display: flex; justify-content: flex-end; }
-  .cart-btn { position: relative; display: flex; align-items: center;
+  /* One shape, two doors: search on the left balances cart on the right, same
+     44px tap target and the same stroke weight as the icon beside it. */
+  .cart-btn, .search-btn { position: relative; display: flex; align-items: center;
     justify-content: center; width: 44px; height: 44px; color: var(--ink); }
   .cart-badge { position: absolute; top: 4px; right: 1px; display: flex;
     align-items: center; justify-content: center; min-width: 16px; height: 16px;
@@ -301,6 +301,17 @@ const css = `
   .crumbs a { display: flex; align-items: center; min-height: 44px; }
   .crumbs b { font-weight: 400; color: var(--secondary); }
   .muted { margin: 0; color: var(--tertiary); font-size: 13px; }
+
+  /* The one form the whole feature is: a GET request to /search, so the input
+     takes whatever width the button leaves it rather than a fixed measure. */
+  .search { display: flex; gap: 10px; padding: 22px 0 0; }
+  .search input { flex: 1; min-width: 0; min-height: 48px; padding: 0 14px;
+    border: 1px solid var(--hairline); border-radius: 2px;
+    background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; }
+  .search input::placeholder { color: var(--tertiary); opacity: 1; }
+  /* Narrower than the full-measure .btn elsewhere: this one sits beside a
+     field rather than closing a page, and 48px keeps it level with the input. */
+  .search .btn { width: auto; min-height: 48px; padding: 0 20px; }
 
   /* Grid paper, 28px pitch: the only gradient on the storefront. */
   .brand, footer.site { display: flex; flex-direction: column; align-items: center;
@@ -413,6 +424,12 @@ const css = `
      descendant selector would put a section rule under every product title. */
   .sec > h2 { margin: 0; padding-bottom: 12px; border-bottom: 1px solid var(--hairline);
     font: 400 19px/1.2 ui-serif, Georgia, "Times New Roman", serif; }
+  /* The same trap .cart-badge[hidden] was written for: the UA's [hidden] rule
+     is display:none at the lowest specificity there is, and .sec's own
+     display:flex beats it. Without this override the recently-viewed section
+     paints its heading over an empty rail on every product page, whether or
+     not script ever fills it in. */
+  .sec[hidden] { display: none; }
 
   /* The wireframe photographs its category tiles; a category has no image column
      and nothing plans to give it one, so a tile is type on the ground a
