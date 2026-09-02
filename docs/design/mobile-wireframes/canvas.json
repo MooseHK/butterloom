@@ -36,7 +36,7 @@
       "x": 470,
       "y": -260,
       "w": 390,
-      "text": "Listing. Filter and Sort are real GET forms — the URL carries them, so every filtered view is its own cacheable page. Chips are the applied parameters, removable.\n\nLoad the next six is a link to page two, not infinite scroll: nothing to hydrate, and the crawler follows it.\n\nNo wishlist heart. It would need either an account (there is none) or state outside the 1–2KB JS budget, so the pattern is left out rather than faked.\n\nStill no stock line anywhere — that is what lets this page be cached at all."
+      "text": "Listing. Filter and Sort are real GET forms — the URL carries them, so every filtered view is its own cacheable page. Chips are the applied parameters, removable.\n\nLoad the next six is a link to page two, not infinite scroll: nothing to hydrate, and the crawler follows it.\n\nNo wishlist heart. It needs an account to be worth anything and there is none, so the pattern is left out rather than faked. Size is no longer the other half of that argument: the budget this was drawn against was 1–2KB and is now 200KB (ADR-0007).\n\nStill no stock line anywhere — that is what lets this page be cached at all."
     },
     {
       "id": "note-product",
@@ -64,7 +64,7 @@
       "x": 1880,
       "y": 2420,
       "w": 390,
-      "text": "The same screen with JavaScript off — the hard requirement, drawn rather than assumed.\n\nEach Load button is a real submit; the page comes back with the next list filled in and the earlier answers kept. Two extra round trips from Dhaka, where the enhanced path costs none.\n\nOn the shop pages this visitor also loses the cart count, because that badge is the other half of the JS budget."
+      "text": "The same screen with JavaScript off — the hard requirement, drawn rather than assumed.\n\nEach Load button is a real submit; the page comes back with the next list filled in and the earlier answers kept. Two extra round trips from Dhaka, where the enhanced path costs none.\n\nOn the shop pages this visitor also loses the cart count, because that badge is one of the four things script does on the storefront at all — not because any budget is spent."
     },
     {
       "id": "note-stepped",
