@@ -53,7 +53,7 @@ checkoutRoutes.get('/', (c) => {
                 class="form-input"
                 required
                 autocomplete="name"
-                placeholder="Nusrat Jahan"
+                placeholder="Korom Ali"
                 maxlength={150}
               />
             </div>
