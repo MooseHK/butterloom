@@ -522,10 +522,6 @@ storefront.get('/p/:slug', (c) => {
             nothing. The picker above names the configurations, never how many
             of one are left; stock is resolved at placement, against Reservation.
           */}
-          {/* The strip above says we take cash on delivery and the footer says
-              where we deliver. What is left to say at the point of decision is
-              what cash on delivery actually asks of the customer. */}
-          <p class="muted">Nothing to pay now — you pay the courier at the door.</p>
         </div>
         {/*
           Empty and hidden in the bytes the CDN caches, and it has to stay that

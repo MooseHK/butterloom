@@ -41,8 +41,8 @@ export function StorefrontLayout(
           {/*
             viewport-fit=cover lets the page paint under the notch and the home
             indicator; the sheet then pays that back with env(safe-area-inset-*)
-            padding, which is what keeps the promo strip off the camera cutout
-            in landscape.
+            padding, which is what keeps the header off the camera cutout in
+            landscape.
           */}
           <meta
             name="viewport"
@@ -79,18 +79,6 @@ export function StorefrontLayout(
           <script type="speculationrules" dangerouslySetInnerHTML={{ __html: speculationRules }} />
         </head>
         <body>
-          {/*
-            A constant, not a per-visitor message: that is what keeps it out of
-            the cache rules, since everyone is served the same strip. Kept to two
-            short runs because it has to sit on one line at 360px, and both are
-            things ADR-0003 and ADR-0004 actually commit us to — the strip is the
-            one place a first-time visitor learns they can pay at the door.
-          */}
-          <div class="promo">
-            Cash on delivery
-            <i class="dot" />
-            Dispatched daily
-          </div>
           <header class="site">
             <div class="header-left">
               {/* The one route into search from every page including /p/:slug,
@@ -156,7 +144,6 @@ export function StorefrontLayout(
               <i class="dot" />
               <a href="/cart">Your cart</a>
             </nav>
-            <p class="muted">Delivered across Bangladesh</p>
           </footer>
           {/*
             The count, and only the count, comes off a cookie the page did not
@@ -220,9 +207,6 @@ const css = `
     --dot: #a3a194;
     /* The ground a photograph sits on before its bytes arrive. */
     --shot: #eae5db;
-    /* The promo strip is ink-on-paper reversed, so it needs its own two tokens. */
-    --strip: #33383a;
-    --strip-ink: #eee9e1;
     /* One gutter token, so the bleeds that cancel it stay honest. */
     --gutter: 20px;
     --edge: max(20px, env(safe-area-inset-left));
@@ -238,8 +222,6 @@ const css = `
       --hairline: #35312d;
       --dot: #83827b;
       --shot: #2c2926;
-      --strip: #2b2825;
-      --strip-ink: #cdc6b9;
     }
   }
   * { box-sizing: border-box; }
@@ -272,21 +254,10 @@ const css = `
   }
   .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--dot); flex: none; }
 
-  /* min-height, not height: at 360px the two runs still fit on one line, but a
-     longer strip or a larger text setting must be allowed to grow rather than
-     spill out of a fixed 34px band. */
-  /* flex: none on both bars — they are items in the body column now, and a
-     flex item's min-height is the first thing shrinking gives away. */
-  .promo { flex: none; display: flex; flex-wrap: wrap; align-items: center;
-    justify-content: center; gap: 9px; min-height: 34px;
-    padding: 6px max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left));
-    text-align: center; background: var(--strip); color: var(--strip-ink);
-    font: 400 9.5px/1 system-ui, -apple-system, sans-serif;
-    letter-spacing: 0.17em; text-transform: uppercase; }
-
   /* Sticky, so the wordmark and the cart are one thumb away down a long
-     catalogue rather than a scroll back to the top. The promo strip is a
-     one-time message and is allowed to leave. */
+     catalogue rather than a scroll back to the top. flex: none because it is an
+     item in the body column, and a flex item's height is the first thing
+     shrinking gives away. */
   header.site { position: sticky; top: 0; z-index: 10; flex: none;
     display: flex; align-items: center; justify-content: space-between;
     height: 58px; padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
