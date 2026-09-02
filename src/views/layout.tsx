@@ -311,6 +311,24 @@ const css = `
   .receipt-pen:hover { color: var(--ink); border-color: var(--hairline); background: var(--paper); }
 
   /*
+    The board on a phone.
+
+    Below the breakpoint only one column ever fits, and the 21rem cap above is
+    narrower than the content box of most phones — so a start-packed track left
+    every receipt pinned to the left edge with a ragged strip of page down the
+    right. Centring the tracks puts the slip in the middle of the screen, where
+    it also sits under the thumb rather than away from it.
+
+    Only here: on a wide board start-packing is what stops a group holding one
+    order from printing a slip stranded in the middle of the measure, which is
+    why the cap and the packing exist in the first place. Where a phone is
+    narrower than the cap the track fills the row and this does nothing.
+  */
+  @media (max-width: 640px) {
+    .receipts { justify-content: center; }
+  }
+
+  /*
     The dialog is a panel, not a receipt. It is rendered inside the <article
     class="receipt"> it belongs to, so without this it inherits the receipt's
     monospace and the whole thing reads as a terminal window.
