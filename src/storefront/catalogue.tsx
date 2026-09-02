@@ -388,12 +388,12 @@ function listing(c: Context, basePath: string, category: Category | null) {
 /**
  * A GET form landing on `/search?q=…` — an edge-cacheable URL, per ADR-0007 —
  * rather than fetch and a results panel. Autocomplete and instant results are
- * where most storefronts spend their whole JavaScript budget; ADR-0007
- * already spent this one on the Pathao cascade, the cart badge, add-to-cart
- * and recently viewed. Spending nothing here is what keeps that budget free
- * for the things HTML genuinely cannot do — the version below is also the
- * one that still works on the networks the ADR was written for, before a
- * single byte of script would have had the chance to run.
+ * where most storefronts spend their whole JavaScript budget. Ours is no longer
+ * the pinch it was — ADR-0007 now allows 200KB — but the byte count was never
+ * the reason this is a form: a typed URL is a page that caches, is shareable and
+ * can be crawled, and the version below is the one that still works on the
+ * networks the ADR was written for, before a single byte of script would have
+ * had the chance to run.
  */
 function SearchForm(props: { q: string }) {
   return (
