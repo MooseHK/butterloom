@@ -260,7 +260,6 @@ adminProducts.get('/', (c) => {
           <thead>
             <tr>
               <th>Title</th>
-              <th>Slug</th>
               <th>Category</th>
               <th>Price</th>
               <th>Stock</th>
@@ -280,7 +279,6 @@ adminProducts.get('/', (c) => {
                   <td>
                     <a href={`/admin/products/${p.id}`}>{p.title}</a>
                   </td>
-                  <td class="muted">{p.slug}</td>
                   <td>
                     {p.categoryId === null || !shelfNames.has(p.categoryId) ? (
                       <span class="muted">Unshelved</span>
