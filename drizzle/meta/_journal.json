@@ -57,6 +57,13 @@
       "when": 1788288851955,
       "tag": "0007_products_leave_the_storefront",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788288851956,
+      "tag": "0008_compliance",
+      "breakpoints": true
     }
   ]
 }

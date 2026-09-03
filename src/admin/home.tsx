@@ -78,6 +78,13 @@ adminHome.get('/', (c) => {
           </p>
           <p>Editorial photography that belongs to the site rather than to a product.</p>
         </li>
+        <li>
+          <h2>
+            <a href="/admin/settings">Settings & Compliance</a>
+          </h2>
+          <p class="muted">VAT configuration · Statutory identifiers · Archival</p>
+          <p>Configure active VAT rate, view regulatory identifiers (DBID, BIN, TIN), and export records.</p>
+        </li>
       </ul>
     </AdminLayout>,
   )

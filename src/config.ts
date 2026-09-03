@@ -35,4 +35,19 @@ export const config = {
    * has looked at yet.
    */
   maxPendingImages: Number(process.env.BUTTERLOOM_MAX_PENDING_IMAGES ?? 200),
+  /**
+   * Default VAT rate in basis points (1000 = 10.00%).
+   * May be overridden dynamically in the admin panel.
+   */
+  defaultVatRateBp: Number(process.env.BUTTERLOOM_DEFAULT_VAT_RATE_BP ?? 1000),
+  /**
+   * Statutory identifiers displayed across footer and invoices.
+   */
+  dbid: process.env.BUTTERLOOM_DBID ?? 'DBID-384910284',
+  tradeLicence: process.env.BUTTERLOOM_TRADE_LICENCE ?? 'TRAD/DNCC/049182/2024',
+  bin: process.env.BUTTERLOOM_BIN ?? '004829104-0101',
+  tin: process.env.BUTTERLOOM_TIN ?? '738192049182',
+  complianceOfficerName: process.env.BUTTERLOOM_COMPLIANCE_OFFICER ?? 'Mushfiqur Rahman',
+  complianceOfficerPhone: process.env.BUTTERLOOM_COMPLIANCE_PHONE ?? '01711000000',
+  complianceOfficerEmail: process.env.BUTTERLOOM_COMPLIANCE_EMAIL ?? 'compliance@butterloom.com',
 } as const

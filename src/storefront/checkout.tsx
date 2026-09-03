@@ -10,6 +10,8 @@ import {
 } from '../lib/address.js'
 import { formatPaisa } from '../lib/money.js'
 import { StorefrontLayout } from '../views/storefront.js'
+import { allocateInvoice, calculateVat, getVatRateBp } from '../lib/settings.js'
+import { orderPlacedSmsText, sms } from '../lib/sms.js'
 import { getCartItemsForSession } from './queries.js'
 import { getCartItemCount, getSession, syncCartCountCookie } from './session.js'
 
@@ -205,7 +207,24 @@ checkoutRoutes.get('/', (c) => {
               <span>Total</span>
               <span>{formatPaisa(totalPaisa)}</span>
             </div>
-            <p class="muted note">Payable in cash to the courier at the door.</p>
+            <p class="muted note">
+              Payable in cash to the courier at the door. Prices include VAT (Mushak 6.3 invoice itemised upon order).
+            </p>
+          </div>
+
+          <div class="form-group" style="margin: 20px 0 16px;">
+            <label style="display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; line-height: 1.5; cursor: pointer;">
+              <input
+                type="checkbox"
+                name="consent"
+                value="pdpa_2026_v1"
+                required
+                style="margin-top: 3px; accent-color: var(--ink);"
+              />
+              <span>
+                আমি বাটারলুমের <a href="/terms" target="_blank" style="color: var(--ink); text-decoration: underline;">ব্যবহারের শর্তাবলী</a> এবং <a href="/privacy" target="_blank" style="color: var(--ink); text-decoration: underline;">গোপনীয়তা নীতি</a> পড়েছি এবং আমার ব্যক্তিগত তথ্য অর্ডার সরবরাহ ও কর ইনভয়েসের জন্য ব্যবহারে সম্মতি দিচ্ছি। (PDPA 2026)
+              </span>
+            </label>
           </div>
 
           <div class="actions">
@@ -256,9 +275,9 @@ checkoutRoutes.post('/', async (c) => {
     return c.redirect(`/checkout?error=${encodeURIComponent(`Please add ${list}.`)}`, 303)
   }
 
-  let orderId: number
+  let result: { orderId: number; totalPaisa: number }
   try {
-    orderId = db.transaction((tx) => {
+    result = db.transaction((tx) => {
       const items = getCartItemsForSession(session.id)
       if (items.length === 0) {
         throw new Error('Your cart is empty')
@@ -287,6 +306,9 @@ checkoutRoutes.post('/', async (c) => {
         0,
       )
 
+      const vatRateBp = getVatRateBp()
+      const { vatPaisa } = calculateVat(totalPaisa, vatRateBp)
+
       // Create order
       const [order] = tx
         .insert(orders)
@@ -296,6 +318,10 @@ checkoutRoutes.post('/', async (c) => {
           deliveryAddress,
           deliveryNotes,
           totalPaisa,
+          vatRateBp,
+          vatPaisa,
+          consentVersion: String(form.get('consent') ?? 'pdpa_2026_v1'),
+          consentGrantedAt: Math.floor(Date.now() / 1000),
           fulfilmentState: 'placed',
           paymentTier: 'cod',
         })
@@ -329,19 +355,37 @@ checkoutRoutes.post('/', async (c) => {
         })
         .run()
 
+      // Monotonic gapless Mushak 6.3 invoice allocation
+      allocateInvoice(tx, {
+        orderId: order.id,
+        totalPaisa,
+        vatRateBp,
+        vatPaisa,
+        customerName,
+        customerPhone,
+        customerAddress: deliveryAddress,
+      })
+
       // Clear the visitor's cart
       tx.delete(cartItems).where(eq(cartItems.sessionId, session.id)).run()
 
-      return order.id
+      return { orderId: order.id, totalPaisa }
     })
   } catch (err: any) {
     const msg = encodeURIComponent(err?.message || 'Could not place order. Please try again.')
     return c.redirect(`/checkout?error=${msg}`, 303)
   }
 
+  // Send Bengali SMS notification (BTRC compliant)
+  sms.send({
+    to: customerPhone,
+    text: orderPlacedSmsText(`BL-${result.orderId}`, Math.round(result.totalPaisa / 100)),
+    transactional: true,
+  }).catch((err) => console.error('[checkout] failed to send SMS', err))
+
   // The cart was emptied inside the transaction; the badge has to hear about it
   // before the confirmation page renders, or it keeps counting a cart that no
   // longer exists.
   syncCartCountCookie(c, null)
-  return c.redirect(`/order/${orderId}`, 303)
+  return c.redirect(`/order/${result.orderId}`, 303)
 })

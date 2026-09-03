@@ -126,16 +126,35 @@ stayed open:
    open about whether a returned garment goes back on the shelf, and it should get one
    answer, not two.
 
+## Part 6 — Delivery SLA, stored per order [GUIDELINE] (Moved from 0002)
+
+**5 calendar days** same city, **10 calendar days** elsewhere. Goods to courier within **48 hours** of full payment, customer notified.
+- Snapshot promise onto order at placement: `delivery_promise_days` and `delivery_due_at`.
+- Admin orders board highlights orders overdue for dispatch or delivery.
+
+## Part 7 — Complaints [GUIDELINE] (Moved from 0002)
+
+Intake channel, named compliance officer, resolution within **72 hours**.
+- Public intake form at `/contact` writing to `complaints` table (`received_at`, `due_at = received + 72h`, `resolved_at`, resolution).
+- Admin queue sorted by `due_at`, overdue first. Six-year retention.
+
+## Part 8 — Reviews [GUIDELINE] (Moved from 0002)
+
+Customer-visible reviews, negative reviews may not be deleted, no vendor-connected reviews.
+- Schema with no `hidden` / `approved` flags. Takedown table for auditable removals with stated reason and actor.
+- Fetched via uncached fragment to preserve edge-caching of product pages.
+
 ## What changes, file by file
 
 | File | Change |
 |---|---|
-| `src/db/schema.ts` | `settlement_state` + `settled_at` on `orders`; `settlement_events`, `refunds`, `refund_events` |
-| `drizzle/00NN_settlement.sql`, `00NN_refunds.sql` | Two migrations, both additive. `settlement_state` arrives defaulted to `'owed'`, which is true of every existing order |
-| `src/lib/settlement.ts` *(new)* | The permitted transitions, in one place, as data — not scattered across route handlers |
-| `src/admin/orders.tsx` | Settlement shown beside fulfilment on the board and in the order dialog; the transitions an operator drives |
-| `src/admin/refunds.tsx` *(new)* | The queue and the two-step send |
-| `src/storefront/checkout.tsx` | Placement writes `settlement_state: 'owed'` and its first settlement event |
+| `src/db/schema.ts` | `settlement_state` + `settled_at` on `orders`; `settlement_events`, `refunds`, `refund_events`, `complaints`, `complaint_events`, `reviews`, `review_takedowns` |
+| `drizzle/00NN_settlement.sql`, `00NN_refunds.sql` | Additive migrations for settlement, refunds, complaints and reviews |
+| `src/lib/settlement.ts` *(new)* | The permitted transitions, in one place, as data |
+| `src/admin/orders.tsx` | Settlement shown beside fulfilment on the board and in dialog |
+| `src/admin/refunds.tsx` *(new)* | The refund queue and the two-step send |
+| `src/admin/complaints.tsx` *(new)* | Complaints SLA queue |
+| `src/storefront/checkout.tsx` | Placement writes `settlement_state: 'owed'` and snapshots delivery SLA |
 
 ## Done when
 
@@ -147,7 +166,10 @@ stayed open:
   collected.
 - A refund cannot reach `sent` without a reference, and a refund that failed can be retried
   without losing the first attempt.
-- Nothing in the refund or settlement path can be deleted through the admin.
+- Delivery SLA promises are snapshotted onto orders.
+- Complaints are tracked with a 72-hour resolution deadline.
+- Customer reviews can be submitted and rendered without suppressing negative feedback.
+- Nothing in the refund, complaint or settlement path can be deleted through the admin.
 - `npm run check` and `npm test` pass.
 
 ## Deliberately not in this plan

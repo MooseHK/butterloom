@@ -9,18 +9,16 @@ what it deliberately leaves alone.
 
 ## The order
 
-**Reservation is first, before everything else.** It is the stock model the rest sits on:
-refunds need to know what an order consumed, the compliance work needs a truthful
-availability answer at checkout, and neither can be built twice.
+**Reservation is deferred as overkill for now.** It only blocks manual bKash, which may not be implemented. Under COD checkout, inventory commits directly at placement without requiring 90-minute hold machinery. Compliance (0002) is unblocked and implemented directly.
 
 | # | Plan | Status | Blocked on |
 |---|---|---|---|
-| [0001](./0001-reservation.md) | Reservation, 90-minute window | Ready to build | Nothing |
-| [0002](./0002-compliance.md) | Regulatory obligations that live in software | Ready to start §1 | §1 is a decision, not code; three items need a local consultant |
-| [0003](./0003-refunds.md) | Refunds, and the Settlement State they need | Ready to build after 0001 | Refund policy is not written (open decision #4) |
+| [0001](./0001-reservation.md) | Reservation, 90-minute window | Shelved / overkill for now | Only blocks manual bKash (unimplemented) |
+| [0002](./0002-compliance.md) | Regulatory obligations that live in software | Implemented (§1–4, 8–11; §5–7 moved to 0003) | Done |
+| [0003](./0003-refunds.md) | Refunds, Settlement State, Delivery SLA, Complaints & Reviews | Ready to build | Refund policy & settlement design |
 | [0004](./0004-point-in-time-restore.md) | Point-in-time restore, and the drill | Ready to build, independent | An object-storage bucket that does not exist yet |
 
-0002, 0003 and 0004 do not depend on each other and can run in any order once 0001 lands.
+0002 is active without depending on 0001. Delivery SLA, Complaints, and Reviews (§5, §6, §7 of 0002) have been moved into 0003.
 0004 is the only one that needs no application code and can start today in parallel.
 
 ## What these plans are not

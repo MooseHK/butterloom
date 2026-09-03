@@ -626,11 +626,45 @@ function OrderDialog(props: { orderDetail: OrderWithDetails }) {
       </section>
 
       <section>
-        <h3>Customer</h3>
+        <h3>Customer & Privacy (PDPA 2026)</h3>
+        {order.redactedAt ? (
+          <p style="color: #b3403a; font-weight: 500; margin: 0 0 8px;">
+            [Personal data redacted pursuant to PDPA 2026 erasure request on {formatDateTime(order.redactedAt)}]
+          </p>
+        ) : null}
         <p class="dialog-name">{order.customerName}</p>
         <p>{order.customerPhone}</p>
         <p class="dialog-addr">{order.deliveryAddress}</p>
         {order.deliveryNotes ? <p class="muted">Instructions: {order.deliveryNotes}</p> : null}
+        <p class="muted" style="font-size: 12px; margin-top: 6px;">
+          Consent: {order.consentVersion ?? 'None'} {order.consentGrantedAt ? `(${formatDateTime(order.consentGrantedAt)})` : ''}
+        </p>
+
+        {!order.redactedAt ? (
+          <details style="margin-top: 12px; font-size: 13px;">
+            <summary style="cursor: pointer; color: var(--ink); text-decoration: underline;">PDPA Rectification & Erasure</summary>
+            <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 10px; padding: 10px; background: #fdfcf9; border: 1px solid var(--hairline);">
+              <form method="post" action={`/admin/orders/${order.id}/rectify`} style="display: flex; flex-direction: column; gap: 8px;">
+                <strong>Rectify Customer Data</strong>
+                <input name="customer_name" value={order.customerName} placeholder="Name" required style="padding: 4px 8px;" />
+                <input name="customer_phone" value={order.customerPhone} placeholder="Phone" required style="padding: 4px 8px;" />
+                <textarea name="delivery_address" placeholder="Delivery Address" required rows={2} style="padding: 4px 8px;">{order.deliveryAddress}</textarea>
+                <button type="submit" style="width: auto; align-self: flex-start; padding: 4px 12px;">Save Rectification</button>
+              </form>
+              <hr style="border: none; border-top: 1px solid var(--hairline); margin: 6px 0;" />
+              <form method="post" action={`/admin/orders/${order.id}/redact`}>
+                <button
+                  type="submit"
+                  class="danger"
+                  style="width: auto; padding: 4px 12px;"
+                  onclick="return confirm('Redact customer personal data from this order? This action cannot be undone.')"
+                >
+                  Redact Personal Data (Erasure)
+                </button>
+              </form>
+            </div>
+          </details>
+        ) : null}
       </section>
 
       <section>
@@ -659,7 +693,28 @@ function OrderDialog(props: { orderDetail: OrderWithDetails }) {
             </tbody>
           </table>
         </div>
-        <p class="dialog-total">Total: {formatPaisa(order.totalPaisa)}</p>
+        <div style="margin-top: 10px; font-size: 13.5px; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--hairline); padding-top: 8px;">
+          <div style="display: flex; justify-content: space-between;">
+            <span class="muted">Net Amount:</span>
+            <span>{formatPaisa(order.totalPaisa - order.vatPaisa)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="muted">VAT ({(order.vatRateBp / 100).toFixed(1)}%):</span>
+            <span>{formatPaisa(order.vatPaisa)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-weight: 500; font-size: 15px;">
+            <span>Total:</span>
+            <span>{formatPaisa(order.totalPaisa)}</span>
+          </div>
+          <a
+            href={`/order/${order.id}/invoice`}
+            target="_blank"
+            rel="noopener"
+            style="display: inline-block; margin-top: 6px; font-size: 13px; text-decoration: underline;"
+          >
+            View / Print Mushak 6.3 Tax Invoice ↗
+          </a>
+        </div>
       </section>
 
       <section>
@@ -845,3 +900,66 @@ adminOrders.post('/:id/return', (c) => {
     303,
   )
 })
+
+adminOrders.post('/:id/rectify', async (c) => {
+  const id = parseOrderId(c.req.param('id'))
+  if (!id) return c.notFound()
+
+  const [order] = db.select().from(orders).where(eq(orders.id, id)).all()
+  if (!order) return c.notFound()
+
+  const form = await c.req.formData().catch(() => null)
+  const customerName = String(form?.get('customer_name') ?? '').trim()
+  const customerPhone = String(form?.get('customer_phone') ?? '').trim()
+  const deliveryAddress = String(form?.get('delivery_address') ?? '').trim()
+
+  if (!customerName || !customerPhone || !deliveryAddress) {
+    return c.redirect(
+      `/admin/orders?error=${encodeURIComponent('All customer fields are required for rectification.')}`,
+      303,
+    )
+  }
+
+  const now = Math.floor(Date.now() / 1000)
+  db.update(orders)
+    .set({
+      customerName,
+      customerPhone,
+      deliveryAddress,
+      updatedAt: now,
+    })
+    .where(eq(orders.id, id))
+    .run()
+
+  return c.redirect(
+    `/admin/orders?notice=${encodeURIComponent(`Order ${formatOrderId(id)} customer data rectified (PDPA 2026).`)}`,
+    303,
+  )
+})
+
+adminOrders.post('/:id/redact', async (c) => {
+  const id = parseOrderId(c.req.param('id'))
+  if (!id) return c.notFound()
+
+  const [order] = db.select().from(orders).where(eq(orders.id, id)).all()
+  if (!order) return c.notFound()
+
+  const now = Math.floor(Date.now() / 1000)
+  db.update(orders)
+    .set({
+      customerName: '[REDACTED]',
+      customerPhone: '[REDACTED]',
+      deliveryAddress: '[REDACTED]',
+      deliveryNotes: '',
+      redactedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(orders.id, id))
+    .run()
+
+  return c.redirect(
+    `/admin/orders?notice=${encodeURIComponent(`Order ${formatOrderId(id)} personal data redacted (PDPA 2026 erasure).`)}`,
+    303,
+  )
+})
+

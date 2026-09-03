@@ -1,4 +1,6 @@
 # Reservation, with a 90-minute window
+ 
+> **Status: Shelved / Overkill for now.** Reservation only blocks manual bKash (which may not be implemented). Under COD-only checkout, placement decrements stock atomically inside the placement transaction, so 0002 compliance does not require this machinery to land first.
 
 **First, before everything else.** Every other plan in this directory assumes the stock
 model this one builds.

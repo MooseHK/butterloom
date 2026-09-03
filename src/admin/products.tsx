@@ -96,6 +96,22 @@ function Row(props: { i: number | string; categories: Category[] }) {
         Description
         <textarea name={`desc-${i}`} rows={2}></textarea>
       </label>
+      <label>
+        Origin
+        <input name={`origin-${i}`} maxlength={100} placeholder="Bangladesh" defaultValue="Bangladesh" />
+      </label>
+      <label>
+        Material
+        <input name={`material-${i}`} maxlength={150} placeholder="100% Handloom Cotton" />
+      </label>
+      <label>
+        Measurements
+        <input name={`measurements-${i}`} maxlength={250} placeholder="Free size / 5.5m saree" />
+      </label>
+      <label class="span">
+        Returns Policy (Bangla / leave empty for default)
+        <input name={`returns-${i}`} placeholder="Default Bengali DCOG return policy applies if blank" />
+      </label>
     </div>
   )
 }
@@ -426,6 +442,10 @@ adminProducts.post('/', async (c) => {
             description: draft.description,
             pricePaisa: draft.pricePaisa,
             categoryId: draft.categoryId,
+            originCountry: draft.originCountry ?? 'Bangladesh',
+            material: draft.material ?? 'Cotton',
+            measurements: draft.measurements ?? 'Standard',
+            returnsPolicy: draft.returnsPolicy,
           })
           .returning({ id: products.id })
           .all()
@@ -749,6 +769,54 @@ adminProducts.get('/:id', (c) => {
               </textarea>
             </div>
 
+            <div>
+              <span class="field-label">Country of Origin</span>
+              <input
+                type="text"
+                name="originCountry"
+                value={product.originCountry ?? 'Bangladesh'}
+                class="edit-title-input"
+                placeholder="e.g. Bangladesh"
+                maxlength={100}
+              />
+            </div>
+
+            <div>
+              <span class="field-label">Material</span>
+              <input
+                type="text"
+                name="material"
+                value={product.material ?? 'Cotton'}
+                class="edit-title-input"
+                placeholder="e.g. 100% Handloom Cotton"
+                maxlength={150}
+              />
+            </div>
+
+            <div>
+              <span class="field-label">Measurements</span>
+              <textarea
+                name="measurements"
+                rows={2}
+                class="edit-desc-input"
+                placeholder="Free size, saree length 5.5m, width 1.15m..."
+              >
+                {product.measurements ?? 'Standard'}
+              </textarea>
+            </div>
+
+            <div>
+              <span class="field-label">Returns & Refunds Policy (Bangla — optional override)</span>
+              <textarea
+                name="returnsPolicy"
+                rows={3}
+                class="edit-desc-input"
+                placeholder="Leave blank to use standard DCOG 2021 Bengali return policy"
+              >
+                {product.returnsPolicy ?? ''}
+              </textarea>
+            </div>
+
             <div class="variant-group">
               <div class="variant-header-row">
                 <span class="variant-label">Variants & Stock Quantity</span>
@@ -937,6 +1005,10 @@ adminProducts.post('/:id', async (c) => {
   }
   const pricePaisa = Math.round(priceFloat * 100)
   const description = String(form.get('description') ?? '').trim()
+  const originCountry = String(form.get('originCountry') ?? '').trim() || null
+  const material = String(form.get('material') ?? '').trim() || null
+  const measurements = String(form.get('measurements') ?? '').trim() || null
+  const returnsPolicy = String(form.get('returnsPolicy') ?? '').trim() || null
 
   const rawCat = String(form.get('categoryId') ?? '').trim()
   const categoryId = rawCat ? Number(rawCat) : null
@@ -956,6 +1028,10 @@ adminProducts.post('/:id', async (c) => {
         pricePaisa,
         description,
         categoryId,
+        originCountry,
+        material,
+        measurements,
+        returnsPolicy,
       })
       .where(eq(products.id, id))
       .run()
@@ -1118,6 +1194,21 @@ adminProducts.post('/:id/storefront', async (c) => {
   const wanted = String(form.get('on_storefront') ?? '')
   if (wanted !== 'yes' && wanted !== 'no') {
     return c.redirect(`${back}?error=${encodeURIComponent('Nothing was changed.')}`, 303)
+  }
+
+  if (wanted === 'yes') {
+    const missing: string[] = []
+    if (!product.originCountry?.trim()) missing.push('country of origin')
+    if (!product.material?.trim()) missing.push('material')
+    if (!product.measurements?.trim()) missing.push('measurements')
+    if (missing.length > 0) {
+      return c.redirect(
+        `${back}?error=${encodeURIComponent(
+          `Cannot publish to storefront: ${missing.join(', ')} are mandatory disclosures (DCOG 2021).`,
+        )}`,
+        303,
+      )
+    }
   }
 
   const hiddenAt = wanted === 'no' ? Math.floor(Date.now() / 1000) : null

@@ -7,6 +7,7 @@ import { adminCategories } from './admin/categories.js'
 import { adminHome } from './admin/home.js'
 import { adminOrders } from './admin/orders.js'
 import { adminProducts } from './admin/products.js'
+import { adminSettings } from './admin/settings.js'
 import { adminSiteImages } from './admin/siteImages.js'
 import { config } from './config.js'
 import { runMigrations } from './db/migrate.js'
@@ -74,6 +75,7 @@ app.route('/admin/orders', adminOrders)
 app.route('/admin/products', adminProducts)
 app.route('/admin/categories', adminCategories)
 app.route('/admin/site-images', adminSiteImages)
+app.route('/admin/settings', adminSettings)
 app.route('/admin', adminHome)
 app.route('/media', mediaRoutes)
 app.route('/brand', brandRoutes)

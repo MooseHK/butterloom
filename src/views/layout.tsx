@@ -26,7 +26,7 @@ export function AdminLayout(
   props: PropsWithChildren<{
     title: string
     /** Which nav item is the current one. Omitted on pages that are in neither. */
-    section?: 'home' | 'products' | 'categories' | 'site-images' | 'orders'
+    section?: 'home' | 'products' | 'categories' | 'site-images' | 'orders' | 'settings'
     /** A way back up one level, for pages reached from a list. */
     back?: { href: string; label: string }
     /** Hide the default top h1 (useful when the page provides its own editable title) */
@@ -98,6 +98,12 @@ export function AdminLayout(
                 aria-current={props.section === 'site-images' ? 'page' : undefined}
               >
                 Site images
+              </a>
+              <a
+                href="/admin/settings"
+                aria-current={props.section === 'settings' ? 'page' : undefined}
+              >
+                Settings
               </a>
               {/*
                 A new tab on purpose: the storefront carries no admin chrome, so

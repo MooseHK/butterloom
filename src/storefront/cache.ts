@@ -22,6 +22,11 @@ export async function edgeCacheable(c: Context, next: Next): Promise<void> {
     return
   }
 
+  const existingCc = c.res.headers.get('Cache-Control')
+  if (existingCc && (existingCc.includes('no-store') || existingCc.includes('private'))) {
+    return
+  }
+
   if (c.res.headers.has('Set-Cookie')) {
     console.error(
       `[cache] ${c.req.path} set a cookie on a cacheable path; edge caching disabled for this response. See ADR-0007.`,

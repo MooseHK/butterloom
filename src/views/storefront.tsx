@@ -1,5 +1,6 @@
 import { raw } from 'hono/html'
 import type { PropsWithChildren } from 'hono/jsx'
+import { config } from '../config.js'
 import { brandMarkUrl } from '../media.js'
 
 /**
@@ -140,10 +141,31 @@ export function StorefrontLayout(
                 either again in type underneath is just saying it twice. */}
             <Seal alt="" />
             <nav class="footlinks">
-              <a href="/">The collection</a>
+              {props.canonicalPath !== '/' ? (
+                <>
+                  <a href="/">The collection</a>
+                  <i class="dot" />
+                  <a href="/cart">Your cart</a>
+                  <i class="dot" />
+                </>
+              ) : null}
+              <a href="/terms">শর্তাবলী</a>
               <i class="dot" />
-              <a href="/cart">Your cart</a>
+              <a href="/returns">রিটার্ন ও রিফান্ড</a>
+              <i class="dot" />
+              <a href="/privacy">গোপনীয়তা নীতি</a>
+              <i class="dot" />
+              <a href="/contact">যোগাযোগ</a>
             </nav>
+            <div class="statutory">
+              <span>DBID: {config.dbid}</span>
+              <i class="dot" />
+              <span>TRAD: {config.tradeLicence}</span>
+              <i class="dot" />
+              <span>BIN: {config.bin}</span>
+              <i class="dot" />
+              <span>TIN: {config.tin}</span>
+            </div>
           </footer>
           {/*
             The count, and only the count, comes off a cookie the page did not
@@ -662,4 +684,31 @@ const css = `
   .confirm-badge { display: grid; place-items: center; width: 46px; height: 46px;
     border-radius: 50%; background: var(--ink); color: var(--paper); }
   .centre { text-align: center; }
+
+  /* Stock Indicator (DCOG 2021 live stock count) */
+  .stock-indicator { margin: 8px 0 12px; font-size: 13.5px; font-weight: 500; }
+  .stock-indicator.in-stock { color: var(--ink); }
+  .stock-indicator.low-stock { color: #a36214; }
+  .stock-indicator.out-of-stock { color: #b3403a; }
+
+  /* Product details accordion (mobile first and mobile only) */
+  .acc { display: flex; flex-direction: column; margin-top: 24px; border-top: 1px solid var(--hairline); }
+  .acc details { border-bottom: 1px solid var(--hairline); }
+  .acc summary { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    min-height: 52px; padding: 12px 0; list-style: none; cursor: pointer;
+    font: 400 11px/1 system-ui, -apple-system, sans-serif;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); user-select: none; }
+  .acc summary::-webkit-details-marker { display: none; }
+  .acc summary::marker { display: none; }
+  .acc-icon { font-size: 17px; font-weight: 300; color: var(--tertiary); transition: transform 0.2s ease; line-height: 1; }
+  .acc details[open] .acc-icon { transform: rotate(45deg); }
+  .acc-body { padding: 0 0 18px; color: var(--secondary); font-size: 14.5px; line-height: 1.7; }
+  .acc-body p { margin: 0 0 8px; }
+  .acc-body p:last-child { margin-bottom: 0; }
+  .acc-body a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Statutory Identifiers */
+  .statutory { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 12px;
+    margin-top: 12px; font: 400 9.5px/1.4 system-ui, -apple-system, sans-serif;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--tertiary); text-align: center; }
 `

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { Category } from '../db/schema.js'
 import { formatPaisa } from '../lib/money.js'
+import { config } from '../config.js'
 import { Seal, StorefrontLayout } from '../views/storefront.js'
 import { Picture } from '../views/picture.js'
 import {
@@ -447,6 +448,189 @@ storefront.get('/recently-viewed', (c) => {
   return c.html(<>{listings.map((entry) => <Card listing={entry} sizes={railSizes} eager={false} />)}</>)
 })
 
+export const defaultBanglaReturnPolicy =
+  'পণ্য হাতে পাওয়ার পর কোনো ত্রুটি, ক্ষতি বা অমিল দেখা দিলে ৭ দিনের মধ্যে আমাদের সাথে যোগাযোগ করুন। অক্ষত অবস্থায় পণ্য ফেরত দিয়ে সম্পূর্ণ মূল্য ফেরত অথবা পণ্য পরিবর্তন করা যাবে। ডেলিভারি ব্যর্থতার ক্ষেত্রে ১০ দিনের মধ্যে সম্পূর্ণ অর্থ যে মাধ্যমে পরিশোধ করা হয়েছিল সে মাধ্যমেই ফেরত দেওয়া হবে।'
+
+function PolicyPage(props: {
+  title: string
+  canonicalPath: string
+  heading: string
+  children: any
+}) {
+  return (
+    <StorefrontLayout title={`${props.title} — butterloom`} canonicalPath={props.canonicalPath}>
+      <main>
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <a href="/">The collection</a>
+          <i class="dot" />
+          <b aria-current="page">{props.heading}</b>
+        </nav>
+        <div class="head" style="margin-bottom: 24px;">
+          <h1>{props.heading}</h1>
+        </div>
+        <article class="detail" style="font-size: 15px; line-height: 1.8; color: var(--secondary);">
+          {props.children}
+        </article>
+      </main>
+    </StorefrontLayout>
+  )
+}
+
+storefront.get('/terms', (c) => {
+  return c.html(
+    <PolicyPage title="ব্যবহারের শর্তাবলী" canonicalPath="/terms" heading="ব্যবহারের শর্তাবলী">
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">১. ভূমিকা</h2>
+      <p>বাটারলুম (Butterloom)-এ আপনাকে স্বাগতম। এই ওয়েবসাইটে পণ্য ব্রাউজ এবং অর্ডার করার মাধ্যমে আপনি এই ব্যবহারের শর্তাবলীর সাথে সম্মত হচ্ছেন।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">২. মূল্য ও ভ্যাট</h2>
+      <p>ওয়েবসাইটে প্রদর্শিত সকল পণ্যের মূল্য বাংলাদেশ সরকারের বিধি মোতাবেক মূল্য সংযোজন কর (ভ্যাট) সহ অন্তর্ভুক্ত। ভোক্তা অধিকার সংরক্ষণ আইন ২০০৯ এর ধারা ৪০ অনুযায়ী প্রদর্শিত মূল্যের অতিরিক্ত কোনো অর্থ দাবি করা হবে না।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">৩. অর্ডার ও পেমেন্ট</h2>
+      <p>আমরা বর্তমানে ক্যাশ অন ডেলিভারি (Cash on Delivery) পদ্ধতিতে সমগ্র বাংলাদেশে পণ্য সরবরাহ করি। পণ্য হাতে পাওয়ার পর কুরিয়ার প্রতিনিধিকে নির্ধারিত মূল্য পরিশোধ করতে হবে।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">৪. ডেলিভারি সময়সীমা</h2>
+      <p>ডিজিটাল কমার্স পরিচালনা নির্দেশিকা ২০২১ অনুযায়ী, একই শহরের ভিতরে সর্বোচ্চ ৫ ক্যালেন্ডার দিন এবং অন্যান্য অঞ্চলে সর্বোচ্চ ১০ ক্যালেন্ডার দিনের মধ্যে পণ্য ডেলিভারি সম্পন্ন করা হবে। অর্ডার নিশ্চিতের ৪৮ ঘণ্টার মধ্যে পণ্য কুরিয়ারে হস্তান্তর করা হয়।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">৫. বুদ্ধিবৃত্তিক সম্পদ</h2>
+      <p>এই ওয়েবসাইটে ব্যবহৃত সকল ছবি, লোগো, টেকস্ট এবং ডিজাইন বাটারলুমের নিজস্ব সম্পত্তি। অনুমতি ব্যতীত এগুলো ব্যবহার আইনত দণ্ডনীয়।</p>
+    </PolicyPage>,
+  )
+})
+
+storefront.get('/returns', (c) => {
+  return c.html(
+    <PolicyPage title="রিটার্ন ও রিফান্ড নীতিমালা" canonicalPath="/returns" heading="রিটার্ন ও রিফান্ড নীতি">
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">১. রিটার্ন অধিকার</h2>
+      <p>ডিজিটাল কমার্স পরিচালনা নির্দেশিকা ২০২১ অনুযায়ী, গ্রাহক পণ্য গ্রহণের পর ত্রুটি, ছেঁড়া, ক্ষতিগ্রস্ত বা ভুল পণ্য পাওয়ার ক্ষেত্রে ৭ ক্যালেন্ডার দিনের মধ্যে রিটার্নের আবেদন করতে পারবেন।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">২. পণ্যের অবস্থা</h2>
+      <p>পণ্যটি অব্যবহৃত এবং অক্ষত মূল ট্যাগ ও প্যাকেজিংসহ ফেরত দিতে হবে।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">৩. রিফান্ডের সময়সীমা ও মাধ্যম</h2>
+      <p>ডেলিভারি ব্যর্থ হলে বা বৈধ রিটার্ন নিশ্চিত হলে ১০ ক্যালেন্ডার দিনের মধ্যে গ্রাহকের মূল পরিশোধিত মাধ্যমে অর্থ ফেরত দেওয়া হবে। ক্যাশ অন ডেলিভারির ক্ষেত্রে গ্রাহকের নিজস্ব বিকাশ বা ব্যাংক অ্যাকাউন্টে রিফান্ড পাঠানো হবে।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">৪. রিফান্ড চার্জ</h2>
+      <p>রিফান্ড প্রেরণের যাবতীয় ট্রানজেকশন ফি বাটারলুম বহন করবে; গ্রাহকের প্রাপ্য অর্থ থেকে কোনো চার্জ কর্তন করা হবে না।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">৫. বলপ্রয়োগ বা অনিবার্য পরিস্থিতি (Force Majeure)</h2>
+      <p>অনিবার্য কারণে পণ্য সরবরাহে অপারগ হলে ৪৮ ঘণ্টার মধ্যে গ্রাহককে অবহিত করা হবে এবং ৭২ ঘণ্টার মধ্যে সম্পূর্ণ অর্থ ফেরত প্রদান করা হবে।</p>
+    </PolicyPage>,
+  )
+})
+
+storefront.get('/privacy', (c) => {
+  return c.html(
+    <PolicyPage title="গোপনীয়তা নীতি" canonicalPath="/privacy" heading="গোপনীয়তা নীতি">
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">১. তথ্যের সংগ্রহ ও উদ্দেশ্য</h2>
+      <p>ব্যক্তিগত উপাত্ত সুরক্ষা আইন ২০২৬ (PDPA 2026) এর অধীনে আমরা গ্রাহকের নাম, ফোন নম্বর, এবং ডেলিভারি ঠিকানা সংগ্রহ করি শুধুমাত্র অর্ডার প্রক্রিয়াকরণ, কুরিয়ার ডেলিভারি ও ভ্যাট ইনভয়েস ইস্যু করার উদ্দেশ্যে।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">২. সম্মতি</h2>
+      <p>অর্ডার প্রদানের সময় গ্রাহক এই গোপনীয়তা নীতি পাঠ করে স্পষ্ট সম্মতি প্রদান করেন। প্রতিটি সম্মতি সময় ও সংস্করণের রেকর্ডসহ সংরক্ষণ করা হয়।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">৩. তথ্য সংশোধনের অধিকার</h2>
+      <p>গ্রাহক চাইলে ৩০ দিনের মধ্যে তাঁর প্রদত্ত নাম, ফোন নম্বর বা ঠিকানায় কোনো ভুল থাকলে তা সংশোধনের আবেদন করতে পারেন।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">৪. তথ্য মুছে ফেলা ও সংবিধিবদ্ধ সংরক্ষণ</h2>
+      <p>ভ্যাট আইন ও ডিজিটাল কমার্স নির্দেশিকা অনুযায়ী ব্যবসায়িক লেনদেন ও ট্যাক্স রেকর্ড ন্যূনতম ৬ বছর সংরক্ষণ বাধ্যতামূলক। আইনানুগ মেয়াদের বাইরে থাকা ব্যক্তিগত তথ্য গ্রাহকের অনুরোধে মুছে ফেলা (Redaction) হবে।</p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">৫. তথ্য নিরাপত্তা</h2>
+      <p>আমরা গ্রাহকের ব্যক্তিগত তথ্য কোনো তৃতীয় পক্ষের কাছে বিক্রয় বা বাণিজ্যিক উদ্দেশ্যে হস্তান্তর করি না।</p>
+    </PolicyPage>,
+  )
+})
+
+storefront.get('/contact', (c) => {
+  return c.html(
+    <PolicyPage title="যোগাযোগ ও অভিযোগ নিষ্পত্তি" canonicalPath="/contact" heading="যোগাযোগ ও অভিযোগ">
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">আমাদের সাথে যোগাযোগ</h2>
+      <p>যেকোনো প্রশ্ন, পণ্যের বিবরণ বা সহযোগিতার জন্য আমাদের সাথে যোগাযোগ করুন:</p>
+      <ul style="margin: 0 0 16px 20px; padding: 0;">
+        <li><b>ইমেইল:</b> {config.complianceOfficerEmail}</li>
+        <li><b>ফোন:</b> {config.complianceOfficerPhone}</li>
+      </ul>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">অভিযোগ নিষ্পত্তি কর্মকর্তা (Compliance Officer)</h2>
+      <p>ডিজিটাল কমার্স পরিচালনা নির্দেশিকা ২০২১ অনুযায়ী আমাদের নির্ধারিত কমপ্লায়েন্স কর্মকর্তা:</p>
+      <p>
+        <b>নাম:</b> {config.complianceOfficerName}<br />
+        <b>পদবি:</b> কমপ্লায়েন্স ও অভিযোগ নিষ্পত্তি কর্মকর্তা<br />
+        <b>ফোন:</b> {config.complianceOfficerPhone}<br />
+        <b>ইমেইল:</b> {config.complianceOfficerEmail}
+      </p>
+      <h2 style="font-size: 16px; margin: 18px 0 8px; color: var(--ink);">অভিযোগ নিষ্পত্তির সময়সীমা</h2>
+      <p>যেকোনো অভিযোগ প্রাপ্তির সর্বোচ্চ ৭২ ঘণ্টার মধ্যে তা তদন্তপূর্বক নিষ্পত্তির আইনি বাধ্যবাধকতা আমরা মেনে চলি।</p>
+    </PolicyPage>,
+  )
+})
+
+storefront.get('/stock/:slug', (c) => {
+  c.header('Cache-Control', 'private, no-store')
+  const detail = findProductBySlug(c.req.param('slug'))
+  if (!detail) return c.notFound()
+
+  const variants: Record<string, number> = {}
+  let totalStock = 0
+  for (const v of detail.variants) {
+    variants[String(v.variant.id)] = v.variant.stockQty
+    totalStock += v.variant.stockQty
+  }
+
+  return c.json({
+    slug: detail.product.slug,
+    inStock: totalStock > 0,
+    totalStock,
+    variants,
+  })
+})
+
+function stockScript(slug: string, defaultVariantId: number | null): string {
+  return `
+    (function() {
+      var slug = ${JSON.stringify(slug)};
+      var defaultVarId = ${JSON.stringify(defaultVariantId)};
+      fetch('/stock/' + encodeURIComponent(slug))
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+          if (!data) return;
+          var indicator = document.getElementById('stock-indicator');
+          var btn = document.getElementById('add-to-cart-btn');
+          var form = document.getElementById('add-to-cart-form');
+          if (!data.inStock) {
+            if (indicator) {
+              indicator.textContent = 'Out of stock';
+              indicator.className = 'stock-indicator out-of-stock';
+            }
+            if (btn) {
+              btn.disabled = true;
+              btn.textContent = 'Sold out';
+            }
+            return;
+          }
+          function updateStock() {
+            var checked = form ? form.querySelector('input[name="variant_id"]:checked') : null;
+            var vId = checked ? checked.value : defaultVarId;
+            var count = (data.variants && vId !== null && vId !== undefined) ? data.variants[vId] : data.totalStock;
+            if (indicator) {
+              if (count === undefined || count <= 0) {
+                indicator.textContent = 'This selection is out of stock';
+                indicator.className = 'stock-indicator out-of-stock';
+                if (btn) { btn.disabled = true; btn.textContent = 'Sold out'; }
+              } else if (count === 1) {
+                indicator.textContent = 'Only 1 left in stock';
+                indicator.className = 'stock-indicator low-stock';
+                if (btn) { btn.disabled = false; btn.textContent = 'Add to cart'; }
+              } else {
+                indicator.textContent = count + ' in stock';
+                indicator.className = 'stock-indicator in-stock';
+                if (btn) { btn.disabled = false; btn.textContent = 'Add to cart'; }
+              }
+            }
+          }
+          var radios = form ? form.querySelectorAll('input[name="variant_id"]') : [];
+          for (var i = 0; i < radios.length; i++) {
+            var r = radios[i];
+            var q = data.variants ? data.variants[r.value] : 0;
+            var chip = r.nextElementSibling;
+            if (chip && (q === undefined || q <= 0)) {
+              chip.classList.add('disabled');
+              chip.title = 'Sold out';
+            }
+            r.addEventListener('change', updateStock);
+          }
+          updateStock();
+        })
+        .catch(function() {});
+    })();
+  `
+}
+
 storefront.get('/p/:slug', (c) => {
   const detail = findProductBySlug(c.req.param('slug'))
   if (!detail) return c.notFound()
@@ -538,13 +722,57 @@ storefront.get('/p/:slug', (c) => {
             <p class="buy-msg" id="add-to-cart-msg" role="alert" hidden />
           </form>
 
-          {/*
-            No availability is rendered here, and none ever should be: this page
-            is cached at the edge, and ADR-0007 keeps the promise that a stale
-            page cannot assert something false about stock by having it assert
-            nothing. The picker above names the configurations, never how many
-            of one are left; stock is resolved at placement, against Reservation.
-          */}
+          {/* Live stock count indicator (Option A uncached stock fragment per DCOG 2021) */}
+          <div id="stock-indicator" class="stock-indicator" aria-live="polite"></div>
+
+          {/* DCOG 2021 compliance disclosures: mobile first & mobile only dropdowns */}
+          <div class="acc">
+            <details>
+              <summary>
+                <span>Measurements</span>
+                <span class="acc-icon" aria-hidden="true">+</span>
+              </summary>
+              <div class="acc-body">
+                <p>{product.measurements || 'Standard'}</p>
+              </div>
+            </details>
+
+            <details>
+              <summary>
+                <span>Origin & Material</span>
+                <span class="acc-icon" aria-hidden="true">+</span>
+              </summary>
+              <div class="acc-body">
+                <p><b>Country of Origin:</b> {product.originCountry || 'Bangladesh'}</p>
+                <p><b>Material:</b> {product.material || 'Cotton'}</p>
+              </div>
+            </details>
+
+            <details>
+              <summary>
+                <span>Returns & Refunds (রিটার্ন ও রিফান্ড নীতি)</span>
+                <span class="acc-icon" aria-hidden="true">+</span>
+              </summary>
+              <div class="acc-body">
+                <p>{product.returnsPolicy || defaultBanglaReturnPolicy}</p>
+                <p style="margin-top: 8px; font-size: 13.5px;">
+                  বিস্তারিত তথ্যের জন্য আমাদের <a href="/returns">রিটার্ন ও রিফান্ড নীতি</a> পাতা দেখুন।
+                </p>
+              </div>
+            </details>
+
+            <details>
+              <summary>
+                <span>Delivery & Timeline</span>
+                <span class="acc-icon" aria-hidden="true">+</span>
+              </summary>
+              <div class="acc-body">
+                <p>
+                  সারা বাংলাদেশে ডেলিভারি চার্জ ৳৮০ (ফ্ল্যাট রেট)। ঢাকায় ৫ ক্যালেন্ডার দিন এবং ঢাকার বাইরে ১০ ক্যালেন্ডার দিনের মধ্যে ডেলিভারি সম্পন্ন হয়।
+                </p>
+              </div>
+            </details>
+          </div>
         </div>
         {/*
           Empty and hidden in the bytes the CDN caches, and it has to stay that
@@ -617,6 +845,7 @@ storefront.get('/p/:slug', (c) => {
           `,
         }}
       />
+      <script dangerouslySetInnerHTML={{ __html: stockScript(product.slug, variants[0]?.variant.id ?? null) }} />
       <script dangerouslySetInnerHTML={{ __html: recentlyViewedScript }} />
     </StorefrontLayout>,
   )

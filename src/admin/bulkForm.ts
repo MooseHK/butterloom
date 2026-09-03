@@ -16,6 +16,10 @@ export interface DraftProduct {
   title: string
   description: string
   pricePaisa: number
+  originCountry: string | null
+  material: string | null
+  measurements: string | null
+  returnsPolicy: string | null
   /**
    * Null is unshelved, which is a normal state for a product being set up. The
    * number is only known to be integer-shaped here; that it names a category
@@ -41,9 +45,24 @@ export function parseRows(form: FormData): { drafts: DraftProduct[]; problems: s
     const price = String(form.get(`price-${i}`) ?? '').trim()
     const description = String(form.get(`desc-${i}`) ?? '').trim()
     const category = String(form.get(`category-${i}`) ?? '').trim()
+    const originCountry = String(form.get(`origin-${i}`) ?? '').trim() || null
+    const material = String(form.get(`material-${i}`) ?? '').trim() || null
+    const measurements = String(form.get(`measurements-${i}`) ?? '').trim() || null
+    const returnsPolicy = String(form.get(`returns-${i}`) ?? '').trim() || null
     const files = form.getAll(`photos-${i}`).filter((f): f is File => f instanceof File && f.size > 0)
 
-    if (!title && !price && !description && !category && files.length === 0) continue
+    if (
+      !title &&
+      !price &&
+      !description &&
+      !category &&
+      !originCountry &&
+      !material &&
+      !measurements &&
+      !returnsPolicy &&
+      files.length === 0
+    )
+      continue
 
     const label = `Row ${i + 1}`
     if (!title) {
@@ -66,6 +85,10 @@ export function parseRows(form: FormData): { drafts: DraftProduct[]; problems: s
       title,
       description,
       pricePaisa: Math.round(priceBdt * 100),
+      originCountry,
+      material,
+      measurements,
+      returnsPolicy,
       categoryId,
       files,
     })

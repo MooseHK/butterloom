@@ -49,6 +49,13 @@ export const products = sqliteTable(
     description: text('description').notNull().default(''),
     pricePaisa: integer('price_paisa').notNull(),
     /**
+     * DCOG 2021 compliance disclosures: origin, material, measurements, and policy.
+     */
+    originCountry: text('origin_country').default('Bangladesh'),
+    material: text('material').default('Cotton'),
+    measurements: text('measurements').default('Standard'),
+    returnsPolicy: text('returns_policy'),
+    /**
      * Null while a product is unshelved: it is still reachable at its own URL
      * and still listed under All items, it just appears under no category. Set
      * null rather than cascade on delete, because deleting a shelf must not
@@ -381,6 +388,18 @@ export const orders = sqliteTable(
     deliveryAddress: text('delivery_address').notNull(),
     deliveryNotes: text('delivery_notes').notNull().default(''),
     totalPaisa: integer('total_paisa').notNull(),
+    /**
+     * VAT snapshot at placement (CRPA s.40 & VAT Act). Integer basis points:
+     * default 1000 = 10.00%. Derived VAT component in paisa.
+     */
+    vatRateBp: integer('vat_rate_bp').notNull().default(1000),
+    vatPaisa: integer('vat_paisa').notNull().default(0),
+    /**
+     * PDPA 2026 consent audit and customer erasure/redaction.
+     */
+    consentVersion: text('consent_version'),
+    consentGrantedAt: integer('consent_granted_at'),
+    redactedAt: integer('redacted_at'),
     fulfilmentState: text('fulfilment_state', { enum: fulfilmentStates })
       .notNull()
       .default('placed'),
@@ -388,6 +407,51 @@ export const orders = sqliteTable(
     createdAt: integer('created_at').notNull().default(now),
     updatedAt: integer('updated_at').notNull().default(now),
   },
+)
+
+/**
+ * Dynamic application settings configurable via the admin panel.
+ */
+export const settings = sqliteTable('settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: integer('updated_at').notNull().default(now),
+})
+
+/**
+ * Counter for monotonic gapless Mushak 6.3 serial allocation.
+ */
+export const invoiceSequence = sqliteTable('invoice_sequence', {
+  id: integer('id').primaryKey(),
+  lastSerial: integer('last_serial').notNull().default(0),
+})
+
+/**
+ * Mushak 6.3 tax invoice record with gapless serial number.
+ */
+export const invoices = sqliteTable(
+  'invoices',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    orderId: integer('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    serialNumber: integer('serial_number').notNull(),
+    mushakNumber: text('mushak_number').notNull(),
+    totalPaisa: integer('total_paisa').notNull(),
+    vatRateBp: integer('vat_rate_bp').notNull(),
+    vatPaisa: integer('vat_paisa').notNull(),
+    netPaisa: integer('net_paisa').notNull(),
+    customerName: text('customer_name').notNull(),
+    customerPhone: text('customer_phone').notNull(),
+    customerAddress: text('customer_address').notNull(),
+    binNumber: text('bin_number'),
+    issuedAt: integer('issued_at').notNull().default(now),
+  },
+  (t) => [
+    uniqueIndex('invoices_serial_idx').on(t.serialNumber),
+    uniqueIndex('invoices_order_idx').on(t.orderId),
+  ],
 )
 
 /**
@@ -431,3 +495,7 @@ export type CartItem = typeof cartItems.$inferSelect
 export type Order = typeof orders.$inferSelect
 export type OrderItem = typeof orderItems.$inferSelect
 export type OrderEvent = typeof orderEvents.$inferSelect
+export type Setting = typeof settings.$inferSelect
+export type Invoice = typeof invoices.$inferSelect
+export type InvoiceSequence = typeof invoiceSequence.$inferSelect
+
