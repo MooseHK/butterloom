@@ -46,7 +46,15 @@ of the smallest instance ADR-0003 calls for.
 - **The AVIF/WebP encoder is a subprocess, not a language binding.** Derivative
   generation happens a handful of times a day inside an admin form, so shelling out
   keeps encoder choice independent of ADR-0005.
-- **Client JavaScript is roughly 2–3KB, hand-written, with no framework.** It covers
+- **Client JavaScript is budgeted at 200KB, hand-written, with no framework.**
+  Raised in September 2026 from the 2–3KB this ADR was written with, to leave room
+  to develop against: no Bangladeshi customer's phone has been observed to have
+  trouble with that much script. It is a ceiling to build under, not a target —
+  what ships today is about 3.7KB uncompressed on the product page, the heaviest
+  page on the storefront, and 185 bytes everywhere else. The rest of this ADR is
+  unchanged by the larger number: hand-written and framework-free is a separate
+  commitment, from ADR-0002 and ADR-0005, and so is the requirement below that
+  checkout complete without JavaScript at all. It covers
   four interactions: the Pathao city/zone/area cascade that ADR-0004 makes mandatory,
   fetching edge-cacheable option fragments rather than shipping the whole location
   tree; a cart count read from a client-readable cookie, which is what makes a

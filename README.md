@@ -17,6 +17,14 @@ customer-facing catalogue, category and product pages. See
 - **[docs/launch-prerequisites.md](./docs/launch-prerequisites.md)** — external
   registrations and approvals with lead times we do not control. Several take
   longer than the build; they can all start now.
+- **[docs/COMPLIANCE.md](./docs/COMPLIANCE.md)** — the Bangladeshi regulation that
+  shapes the schema and the workflow, not just the policy pages, with each item
+  tiered by how binding it is. Not legal advice; three items need a consultant.
+- **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)** — how this runs in production:
+  topology, migrations, secrets, backups, monitoring. Partly built, nothing
+  provisioned.
+- **[docs/plans/](./docs/plans/)** — work that is decided but not built, in the
+  order it should happen. Reservation first.
 
 ## The shape of it so far
 

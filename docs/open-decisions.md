@@ -8,6 +8,11 @@ Settled since this list was written, and no longer open: the application stack
 (ADR-0007). The stack recommendation recorded here — Django, PostgreSQL and htmx
 — was not the decision reached; ADR-0005 and ADR-0006 record why.
 
+Those were removed from the list and the rest renumbered, which is why ADR-0006
+points at a "§1" that is now a different decision entirely. So the convention has
+changed: **a settled entry stays where it is, marked settled, and the numbers never
+move.** `src/config.ts` and the plans in `docs/plans/` both cite these numbers.
+
 ## 1. Reporting specification
 
 Revenue is recognised when goods are delivered, per CONTEXT.md; **Remitted** is a
@@ -16,11 +21,16 @@ are not specified. Candidates: RTO rate by area, remitted revenue by month, TrxI
 rejection rate, days from Collected to Remitted, stock turn by product. Blocked on
 nothing; needs a working session.
 
-## 2. Reservation expiry window
+## 2. Reservation expiry window — **SETTLED: 90 minutes**
 
 How long stock is held for an unverified Manual bKash order before release.
-**Recommendation:** 60–90 minutes. Too short strands honest customers mid-payment;
+~~**Recommendation:** 60–90 minutes.~~ Too short strands honest customers mid-payment;
 too long lets fake orders lock a catalogue where stock is frequently one.
+
+Settled at **90 minutes**, the customer-safe end of the range, on the reasoning that a
+Manual bKash sender may have to leave the house to reach an agent. Configurable via
+`BUTTERLOOM_RESERVATION_WINDOW_MINUTES` so the number can move without a code change.
+`docs/plans/0001-reservation.md` is the plan; the window is not built yet.
 
 ## 3. OTP on Cash on Delivery orders
 
@@ -33,6 +43,12 @@ anyway, and enables a blocklist of repeat refusers.
 
 A refund is a manual send-money back with Butterloom absorbing the transfer fee.
 Needs a policy and an audited screen; neither is drafted.
+
+The screen is now planned — `docs/plans/0003-refunds.md`, along with the Settlement
+State it needs, since there is nothing to refund from without it. **The policy is
+still the open half**, and the plan's §5 lists the four questions it has to answer.
+One of them — whether a returned garment goes back on the shelf — is the same
+question `0001-reservation.md` leaves open, and wants one answer rather than two.
 
 ## 5. Image derivative ladder
 
@@ -47,6 +63,11 @@ ADR-0006 gives up managed point-in-time recovery, and is only sound if restoring
 from the replicated copy is rehearsed rather than assumed. The drill belongs in the
 operator runbook ADR-0003 requires. Not a design decision, but tracked here because
 forgetting it silently invalidates ADR-0006.
+
+`docs/plans/0004-point-in-time-restore.md` is the plan, and it can start today — it
+needs no application code and depends on nothing else. This entry closes when a
+restore to a chosen timestamp has actually been performed and timed, not when the
+replication is switched on.
 
 ## 7. Facet value ordering
 
