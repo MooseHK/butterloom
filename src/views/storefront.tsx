@@ -51,8 +51,7 @@ export function StorefrontLayout(
           />
           {/* The paper colour, so the browser chrome and the overscroll gutter
               match the page rather than flashing white above it. */}
-          <meta name="theme-color" content="#f2eee6" media="(prefers-color-scheme: light)" />
-          <meta name="theme-color" content="#201e1b" media="(prefers-color-scheme: dark)" />
+          <meta name="theme-color" content="#f2eee6" />
           <title>{props.title}</title>
           {props.description ? <meta name="description" content={props.description} /> : null}
           {props.noindex ? <meta name="robots" content="noindex,follow" /> : null}
@@ -186,9 +185,10 @@ export function StorefrontLayout(
 
 /**
  * The logo lockup in a paper-coloured circle. The PNG is flattened onto the
- * paper colour, so the circle keeps that ground even in dark mode — otherwise
- * the square corners of the file would glow on the dark ground. width/height
- * are the file's own 460 × 460; ADR-0007 wants no layout shift while it loads.
+ * paper colour rather than carrying transparency, so the circle has to be
+ * given that same ground for the square corners of the file to disappear into
+ * it. width/height are the file's own 460 × 460; ADR-0007 wants no layout
+ * shift while it loads.
  */
 export function Seal(props: { alt: string }) {
   return (
@@ -215,7 +215,11 @@ const cartBadgeScript = `
 
 const css = `
   :root {
-    color-scheme: light dark;
+    /* The page is set in one palette. Declared rather than left to default so
+       the UA paints scrollbars, form controls and the canvas light even when
+       the OS is set dark — without it those come back dark around a paper
+       page. */
+    color-scheme: light;
     /* Lifted off the logo file, not chosen: docs/design/mobile-wireframes. */
     --paper: #f2eee6;
     --gridline: #eee9e1;
@@ -232,19 +236,6 @@ const css = `
     /* One gutter token, so the bleeds that cancel it stay honest. */
     --gutter: 20px;
     --edge: max(20px, env(safe-area-inset-left));
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      /* The same palette turned over: warm dark ground, paper-coloured ink. */
-      --paper: #201e1b;
-      --gridline: #292724;
-      --ink: #f2eee6;
-      --secondary: #b8b2a6;
-      --tertiary: #918b80;
-      --hairline: #35312d;
-      --dot: #83827b;
-      --shot: #2c2926;
-    }
   }
   * { box-sizing: border-box; }
   /* Safari on iOS inflates text when a phone turns landscape; the page is set
@@ -355,7 +346,9 @@ const css = `
      same thing printed twice. */
   footer.site .seal { width: 86px; height: 86px; }
   .seal { width: 132px; height: 132px; border-radius: 50%; overflow: hidden;
-    /* Literal paper, not the token: the file's own ground, in both themes. */
+    /* Literal paper, not the token: this colour is flattened into the PNG
+       itself, so the circle has to match the file rather than follow whatever
+       --paper is later set to. */
     background: #f2eee6; }
   .seal img { display: block; width: 100%; height: auto; }
 

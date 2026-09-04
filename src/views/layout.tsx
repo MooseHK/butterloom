@@ -131,7 +131,9 @@ export function AdminLayout(
 
 const css = `
   :root {
-    color-scheme: light dark;
+    /* One palette, declared: the admin is paper, and without this the UA
+       paints its scrollbars and form controls dark under a dark OS setting. */
+    color-scheme: light;
     --paper: #f2eee6;
     --gridline: #eee9e1;
     --ink: #33383a;
@@ -142,20 +144,6 @@ const css = `
     --shot: #eae5db;
     --strip: #33383a;
     --strip-ink: #eee9e1;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --paper: #201e1b;
-      --gridline: #292724;
-      --ink: #f2eee6;
-      --secondary: #b8b2a6;
-      --tertiary: #918b80;
-      --hairline: #35312d;
-      --dot: #83827b;
-      --shot: #2c2926;
-      --strip: #2b2825;
-      --strip-ink: #cdc6b9;
-    }
   }
   *, *::before, *::after { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.5 system-ui, sans-serif; min-width: 0; background: var(--paper); color: var(--ink); }
@@ -234,17 +222,17 @@ const css = `
     text-decoration: none; color: var(--secondary); font-size: 14px; }
   .status-tab:hover { color: inherit; border-color: var(--dot); }
   /*
-    --ink on --paper rather than the --strip pair, because --strip is only a
-    shade off --paper in the dark scheme: the selected pill came out almost
-    the same colour as the page and stopped reading as selected at all. This
-    inverts the body colours, so it is a solid block in both schemes.
+    --ink on --paper rather than the --strip pair: this inverts the body
+    colours, so the selected pill reads as a solid block against the page. The
+    --strip pair is the receipt strip's, and pitched close enough to the paper
+    that a pill wearing it stopped reading as selected at all.
   */
   .status-tab.active { color: var(--paper); background: var(--ink);
     border-color: var(--ink); font-weight: 600; }
   .status-tab-n { font-size: 12px; font-variant-numeric: tabular-nums;
     padding: 1px 7px; border-radius: 999px; background: var(--hairline); color: var(--ink); }
-  /* Outlined in the pill's own text colour, which is legible whichever way
-     round the inversion went. */
+  /* Outlined in the pill's own text colour, so the count holds its edge
+     against the inverted ground without naming a second colour. */
   .status-tab.active .status-tab-n { background: transparent; color: inherit;
     box-shadow: inset 0 0 0 1px currentColor; }
 
